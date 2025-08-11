@@ -1,0 +1,9 @@
+[package]
+name = "nf-e"
+version = "0.1.0"
+edition = "2024"
+readme = "./README.md"
+license = "MIT"
+keywords = ["nfe", "nf-e", "nfce", "nfc-e"]
+
+[dependencies]
