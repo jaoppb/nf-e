@@ -66,7 +66,12 @@ impl Serialize for Identification {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ide", 16)?;
+        let len = 17
+            + self.date.is_some() as usize
+            + self.printing_type.is_some() as usize
+            + self.intermediator.is_some() as usize;
+
+        let mut state = serializer.serialize_struct("ide", len)?;
         state.serialize_field("cUF", &(self.location.state.clone() as u8))?;
         state.serialize_field("cNF", &self.numeric_code)?;
         state.serialize_field("natOp", &self.operation_nature)?;
