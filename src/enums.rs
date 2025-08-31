@@ -67,3 +67,19 @@ pub enum Presence {
 pub enum Intermediator {
     External = 1,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Document {
+    CNPJ(CNPJ),
+    CPF(CPF),
+    IE(IE),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CNPJ([u8; 14]);
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CPF([u8; 11]);
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IE([u8; 14]);

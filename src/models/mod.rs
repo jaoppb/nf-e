@@ -1,6 +1,6 @@
 use crate::enums::*;
 
-use crate::states::Location;
+use crate::states::{City, Location, State};
 use crate::LIBRARY_VERSION;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
@@ -8,6 +8,7 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 pub struct Info {
     pub id: String,
     pub identification: Identification,
+    pub issuer: Issuer,
 }
 
 impl Serialize for Info {
@@ -31,24 +32,24 @@ impl Info {
 
 #[derive(Deserialize, Debug)]
 pub struct Identification {
-    location: Location,
-    numeric_code: u32,
-    operation_nature: String,
-    model: Model,
-    series: u8,
-    number: u32,
-    emission_date: chrono::DateTime<chrono::Local>,
-    date: Option<chrono::DateTime<chrono::Local>>,
-    r#type: Operation,
-    destination: DestinationTarget,
-    printing_type: Option<DanfeGeneration>,
-    emission_type: EmissionType,
-    verifier_digit: u8,
-    environment: Environment,
-    finality: Finality,
-    consumer: bool,
-    presence: Option<Presence>,
-    intermediator: Option<Intermediator>,
+    pub location: Location,
+    pub numeric_code: u32,
+    pub operation_nature: String,
+    pub model: Model,
+    pub series: u8,
+    pub number: u32,
+    pub emission_date: chrono::DateTime<chrono::Local>,
+    pub date: Option<chrono::DateTime<chrono::Local>>,
+    pub r#type: Operation,
+    pub destination: DestinationTarget,
+    pub printing_type: Option<DanfeGeneration>,
+    pub emission_type: EmissionType,
+    pub verifier_digit: u8,
+    pub environment: Environment,
+    pub finality: Finality,
+    pub consumer: bool,
+    pub presence: Option<Presence>,
+    pub intermediator: Option<Intermediator>,
 }
 
 impl Identification {
@@ -103,4 +104,29 @@ impl Serialize for Identification {
         state.serialize_field("verProc", &self.emission_version())?;
         state.end()
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Address {
+    pub line_1: String,
+    pub line_2: Option<String>,
+    pub number: String,
+    pub neighborhood: String,
+    pub city: City,
+    pub state: State,
+    pub zip_code: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TaxableAddress {
+    pub address: Address,
+    pub ie: IE,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Issuer {
+    pub document: Document,
+    pub name: String,
+    pub trade_name: Option<String>,
+    pub address: TaxableAddress,
 }
