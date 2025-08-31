@@ -2,6 +2,7 @@ use crate::enums::*;
 
 use crate::states::{City, Location, State};
 use crate::LIBRARY_VERSION;
+use serde::ser::SerializeSeq;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -9,6 +10,7 @@ pub struct Info {
     pub id: String,
     pub identification: Identification,
     pub issuer: Issuer,
+    pub details: Details,
 }
 
 impl Serialize for Info {
@@ -16,10 +18,12 @@ impl Serialize for Info {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("Info", 3)?;
+        let mut state = serializer.serialize_struct("Info", 5)?;
         state.serialize_field("@versao", &self.version())?;
         state.serialize_field("@id", &self.id)?;
         state.serialize_field("ide", &self.identification)?;
+        state.serialize_field("emit", &self.issuer)?;
+        state.serialize_field("details", &self.details)?;
         state.end()
     }
 }
@@ -129,4 +133,92 @@ pub struct Issuer {
     pub name: String,
     pub trade_name: Option<String>,
     pub address: TaxableAddress,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Item {
+    pub code: String,
+    pub gtin: Option<String>,
+    pub description: String,
+    pub ncm: u32,
+    pub cest: u32,
+    pub tribute: u16,
+    pub cfop: u32,
+    pub unit: String,
+    pub quantity: f64,
+    pub total_value: f64,
+    pub tribute_unit: String,
+    pub tribute_quantity: f64,
+    pub tribute_unit_value: f64,
+    pub freight_value: Option<f64>,
+    pub insurance_value: Option<f64>,
+    pub discount_value: Option<f64>,
+    pub other_value: Option<f64>,
+    pub included: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Origin {
+    National = 0,
+    NationalInConformity = 4,
+    NationalContentBelow40 = 5,
+    NationalContentBetween40And70 = 3,
+    NationalContentAbove70 = 8,
+    Foreign = 1,
+    ForeignInternalMarket = 2,
+    ForeignNoSimilar = 6,
+    ForeignInternalMarketNoSimilar = 7,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CSOSN {
+    FinalConsumer = 102,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ICMSSN102 {
+    pub origin: Origin,
+    pub csosn: CSOSN,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ICMS {
+    ICMSSN102(ICMSSN102),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Detail {
+    pub item: Item,
+    pub icms: ICMS,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Details {
+    pub details: Vec<Detail>,
+}
+
+impl Serialize for Details {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct DetailWrapper<'a> {
+            #[serde(flatten)]
+            detail: &'a Detail,
+            #[serde(rename = "@nItem")]
+            n_item: usize,
+        }
+
+        let mut sequence = serializer.serialize_seq(Some(self.details.len()))?;
+        for (index, detail) in self.details.iter().enumerate() {
+            let element = DetailWrapper {
+                detail,
+                n_item: index + 1,
+            };
+
+            sequence.serialize_element(&element)?;
+        }
+        sequence.end()
+    }
 }
