@@ -16,8 +16,8 @@ impl Serialize for Info {
         S: serde::Serializer,
     {
         let mut state = serializer.serialize_struct("Info", 3)?;
-        state.serialize_field("versao", &self.version())?;
-        state.serialize_field("id", &self.id)?;
+        state.serialize_field("@versao", &self.version())?;
+        state.serialize_field("@id", &self.id)?;
         state.serialize_field("ide", &self.identification)?;
         state.end()
     }
