@@ -229,7 +229,7 @@ pub struct Issuer {
 /// discount_value: Discount value (vDesc) - Optional
 /// other_value: Other additional costs (vOutro) - Optional
 /// included: Indicates if the item is included in the total invoice value (indTot)
-#[derive(Deserialize, Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Item {
     pub code: String,
     pub gtin: Option<String>,
@@ -287,6 +287,94 @@ impl Serialize for Item {
     }
 }
 
+impl<'de> Deserialize<'de> for Item {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ItemHelper {
+            #[serde(rename = "cProd")]
+            c_prod: String,
+            #[serde(rename = "cEAN")]
+            c_ean: Option<String>,
+            #[serde(rename = "xProd")]
+            x_prod: String,
+            #[serde(rename = "NCM")]
+            ncm: u32,
+            #[serde(rename = "CFOP")]
+            cfop: u32,
+            #[serde(rename = "uCom")]
+            u_com: String,
+            #[serde(rename = "qCom")]
+            q_com: String,
+            #[serde(rename = "vProd")]
+            v_prod: String,
+            #[serde(rename = "uTrib")]
+            u_trib: String,
+            #[serde(rename = "qTrib")]
+            q_trib: String,
+            #[serde(rename = "vUnTrib")]
+            v_un_trib: String,
+            #[serde(rename = "vDesc")]
+            v_desc: Option<String>,
+            #[serde(rename = "vOutro")]
+            v_outro: Option<String>,
+            #[serde(rename = "indTot")]
+            ind_tot: u8,
+        }
+
+        let helper = ItemHelper::deserialize(deserializer)?;
+
+        let quantity = helper
+            .q_com
+            .parse::<f64>()
+            .map_err(serde::de::Error::custom)?;
+        let total_value = helper
+            .v_prod
+            .parse::<f64>()
+            .map_err(serde::de::Error::custom)?;
+        let tribute_quantity = helper
+            .q_trib
+            .parse::<f64>()
+            .map_err(serde::de::Error::custom)?;
+        let tribute_unit_value = helper
+            .v_un_trib
+            .parse::<f64>()
+            .map_err(serde::de::Error::custom)?;
+        let discount_value = match helper.v_desc {
+            Some(v) => Some(v.parse::<f64>().map_err(serde::de::Error::custom)?),
+            None => None,
+        };
+        let other_value = match helper.v_outro {
+            Some(v) => Some(v.parse::<f64>().map_err(serde::de::Error::custom)?),
+            None => None,
+        };
+        let included = match helper.ind_tot {
+            0 => false,
+            1 => true,
+            _ => return Err(serde::de::Error::custom("Invalid ind_tot value")),
+        };
+
+        Ok(Item {
+            code: helper.c_prod,
+            gtin: helper.c_ean,
+            description: helper.x_prod,
+            ncm: helper.ncm,
+            cfop: helper.cfop,
+            unit: helper.u_com,
+            quantity,
+            total_value,
+            tribute_unit: helper.u_trib,
+            tribute_quantity,
+            tribute_unit_value,
+            discount_value,
+            other_value,
+            included,
+        })
+    }
+}
+
 /// ICMS structure for CSOSN 102
 ///
 /// origin: Origin of the product (orig)
@@ -310,7 +398,7 @@ pub struct Tax {
 ///
 /// item: Item structure (prod)
 /// tax: Tax structure (imposto)
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename = "det")]
 pub struct Detail {
     #[serde(rename = "prod")]
@@ -389,9 +477,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn serialize_detail() {
-        let detail = Detail {
+    fn setup_detail() -> Detail {
+        Detail {
             tax: Tax {
                 icms: ICMS::ICMSSN102(ICMSSN102 {
                     csosn: CSOSN::FinalConsumer,
@@ -414,7 +501,12 @@ mod tests {
                 discount_value: None,
                 other_value: None,
             },
-        };
+        }
+    }
+
+    #[test]
+    fn serialize_detail() {
+        let detail = setup_detail();
 
         let serialized = quick_xml::se::to_string(&detail);
 
@@ -428,6 +520,17 @@ mod tests {
             }
             Err(e) => panic!("Failed to serialize detail {}", e.to_string()),
         }
+    }
+
+    #[test]
+    fn deserialize_detail() {
+        let detail = include_str!("../../tests/fixtures/detail.xml");
+        let deserialized: Detail = quick_xml::de::from_str(detail).unwrap();
+
+        assert_eq!(
+            deserialized,
+            setup_detail()
+        );
     }
 
     #[test]
