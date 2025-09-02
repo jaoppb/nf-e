@@ -86,8 +86,7 @@ pub struct CPF([u8; 11]);
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IE([u8; 14]);
 
-
-#[derive(Deserialize, Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ICMS {
     ICMSSN102(ICMSSN102),
 }
@@ -107,7 +106,26 @@ impl Serialize for ICMS {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl<'de> Deserialize<'de> for ICMS {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ICMSHelper {
+            ICMSSN102: Option<ICMSSN102>,
+        }
+
+        let helper = ICMSHelper::deserialize(deserializer)?;
+        if let Some(data) = helper.ICMSSN102 {
+            Ok(ICMS::ICMSSN102(data))
+        } else {
+            Err(serde::de::Error::custom("Unknown ICMS variant"))
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[repr(u8)]
 #[serde(from = "u8", into = "u8")]
 pub enum CSOSN {
@@ -132,6 +150,7 @@ impl From<CSOSN> for u8 {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[repr(u8)]
 #[serde(from = "u8", into = "u8")]
+#[derive(PartialEq)]
 pub enum Origin {
     National = 0,
     NationalInConformity = 4,

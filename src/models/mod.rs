@@ -291,7 +291,7 @@ impl Serialize for Item {
 ///
 /// origin: Origin of the product (orig)
 /// csosn: CSOSN code (CSOSN)
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ICMSSN102 {
     #[serde(rename = "orig")]
     pub origin: Origin,
@@ -299,7 +299,8 @@ pub struct ICMSSN102 {
     pub csosn: CSOSN,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename = "imposto")]
 pub struct Tax {
     #[serde(rename = "ICMS")]
     pub icms: ICMS,
@@ -308,23 +309,14 @@ pub struct Tax {
 /// Detail structure based on the XML structure of the NFe
 ///
 /// item: Item structure (prod)
-/// icms: ICMS structure (imposto->ICMS)
-#[derive(Deserialize, Debug)]
+/// tax: Tax structure (imposto)
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename = "det")]
 pub struct Detail {
+    #[serde(rename = "prod")]
     pub item: Item,
+    #[serde(rename = "imposto")]
     pub tax: Tax,
-}
-
-impl Serialize for Detail {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("det", 2)?;
-        state.serialize_field("prod", &self.item)?;
-        state.serialize_field("imposto", &self.tax)?;
-        state.end()
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -365,21 +357,36 @@ mod tests {
     use chrono::TimeZone;
 
     #[test]
-    fn serialize_icms() {
-        let icms = ICMS::ICMSSN102(ICMSSN102 {
-            origin: Origin::National,
-            csosn: CSOSN::FinalConsumer,
-        });
-
-        let serialized = quick_xml::se::to_string(&icms);
+    fn serialize_tax() {
+        let tax = Tax {
+            icms: ICMS::ICMSSN102(ICMSSN102 {
+                origin: Origin::National,
+                csosn: CSOSN::FinalConsumer,
+            }),
+        };
+        let serialized = quick_xml::se::to_string(&tax);
 
         match serialized {
             Ok(xml) => assert_eq!(
                 canonicalize_str(&xml).unwrap(),
-                "<ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS>"
+                include_str!("../../tests/fixtures/tax.xml")
             ),
-            Err(e) => panic!("Failed to serialize ICMS {}", e.to_string()),
+            Err(e) => panic!("Failed to serialize Tax {}", e.to_string()),
         }
+    }
+
+    #[test]
+    fn deserialize_icms() {
+        let xml = include_str!("../../tests/fixtures/tax.xml");
+        let deserialized: Tax = quick_xml::de::from_str(xml).unwrap();
+
+        assert_eq!(
+            deserialized.icms,
+            ICMS::ICMSSN102(ICMSSN102 {
+                origin: Origin::National,
+                csosn: CSOSN::FinalConsumer,
+            })
+        );
     }
 
     #[test]
