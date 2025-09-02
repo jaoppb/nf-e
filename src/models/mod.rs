@@ -3,8 +3,15 @@ use crate::enums::*;
 use crate::states::{City, Location, State};
 use crate::LIBRARY_VERSION;
 use serde::ser::SerializeSeq;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 
+/// Main structure based on the XML structure of the NFe
+///
+/// id: Identifier of the NFe (id) - Format "NFe{chave}"
+/// identification: Identification structure (ide)
+/// issuer: Issuer structure (emit)
+/// details: Details structure (det)
+/// version: Fixed value "4.00" (@versao)
 #[derive(Deserialize)]
 pub struct Info {
     pub id: String,
@@ -34,6 +41,28 @@ impl Info {
     }
 }
 
+/// Identification structure based on the XML structure of the NFe
+///
+/// location: Location of the issuer (cUF, cMun)
+/// numeric_code: Numeric code of the NFe (cNF)
+/// operation_nature: Nature of the operation (natOp)
+/// model: Model of the NFe (mod)
+/// series: Series of the NFe (serie)
+/// number: Number of the NFe (nNF)
+/// emission_date: Date and time of emission (dhEmi)
+/// date: Date and time of exit or entry (dhSaiEnt) - Optional
+/// type: Type of operation (tpNF)
+/// destination: Destination target (idDest)
+/// printing_type: Type of DANFE printing (tpImp) - Optional
+/// emission_type: Type of emission (tpEmis)
+/// verifier_digit: Verifier digit (cDV)
+/// environment: Environment type (tpAmb)
+/// finality: Finality of the NFe (finNFe)
+/// consumer: Indicates if the operation is for a final consumer (indFinal)
+/// presence: Presence indicator (indPres) - Optional
+/// intermediator: Intermediator information (intermed) - Optional
+/// emission_process: Emission process (procEmi) - Fixed value "0"
+/// emission_version: Emission version (verProc) - Library version
 #[derive(Deserialize, Debug)]
 pub struct Identification {
     pub location: Location,
@@ -110,6 +139,15 @@ impl Serialize for Identification {
     }
 }
 
+/// Address structure based on the XML structure of the NFe
+///
+/// line_1: Address line 1 (xLgr)
+/// line_2: Address line 2 (xCpl) - Optional
+/// number: Address number (nro)
+/// neighborhood: Neighborhood (xBairro)
+/// city: City (cMun, xMun)
+/// state: State (UF)
+/// zip_code: ZIP code (CEP) - Only numbers
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Address {
     pub line_1: String,
@@ -121,12 +159,22 @@ pub struct Address {
     pub zip_code: String,
 }
 
+/// Taxable entity identifier
+///
+/// address: Address of the taxable entity
+/// ie: State registration (IE) - Use "ISENTO" if exempt
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TaxableAddress {
     pub address: Address,
     pub ie: IE,
 }
 
+/// Issuer structure based on the XML structure of the NFe
+///
+/// document: Document (CNPJ, CPF, or IE)
+/// name: Legal name of the issuer (xNome)
+/// trade_name: Trade name of the issuer (xFant) - Optional
+/// address: Taxable address of the issuer (enderEmit)
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Issuer {
     pub document: Document,
@@ -135,14 +183,28 @@ pub struct Issuer {
     pub address: TaxableAddress,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+/// Item structure based on the XML structure of the NFe
+///
+/// code: Product code (cProd)
+/// gtin: Global Trade Item Number (cEAN) - Optional
+/// description: Product description (xProd)
+/// ncm: NCM code (Nomenclatura Comum do Mercosul)
+/// cfop: CFOP code (Código Fiscal de Operações e Prestações)
+/// unit: Unit of measurement (uCom)
+/// quantity: Quantity of the product (qCom)
+/// total_value: Total value of the product (vProd)
+/// tribute_unit: Unit of measurement for tax purposes (uTrib)
+/// tribute_quantity: Quantity for tax purposes (qTrib)
+/// tribute_unit_value: Unit value for tax purposes (vUnTrib)
+/// discount_value: Discount value (vDesc) - Optional
+/// other_value: Other additional costs (vOutro) - Optional
+/// included: Indicates if the item is included in the total invoice value (indTot)
+#[derive(Deserialize, Debug)]
 pub struct Item {
     pub code: String,
     pub gtin: Option<String>,
     pub description: String,
     pub ncm: u32,
-    pub cest: u32,
-    pub tribute: u16,
     pub cfop: u32,
     pub unit: String,
     pub quantity: f64,
@@ -150,14 +212,54 @@ pub struct Item {
     pub tribute_unit: String,
     pub tribute_quantity: f64,
     pub tribute_unit_value: f64,
-    pub freight_value: Option<f64>,
-    pub insurance_value: Option<f64>,
     pub discount_value: Option<f64>,
     pub other_value: Option<f64>,
     pub included: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl Serialize for Item {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let len = 12
+            + self.gtin.is_some() as usize
+            + self.discount_value.is_some() as usize
+            + self.other_value.is_some() as usize;
+
+        let no_gtin = &"SEM GTIN".to_string();
+        let gtin = self.gtin.as_ref().unwrap_or(no_gtin);
+        let mut state = serializer.serialize_struct("prod", len)?;
+        state.serialize_field("cProd", &self.code)?;
+        state.serialize_field("cEAN", gtin)?;
+        state.serialize_field("xProd", &self.description)?;
+        state.serialize_field("NCM", &self.ncm)?;
+        state.serialize_field("CFOP", &self.cfop)?;
+        state.serialize_field("uCom", &self.unit)?;
+        state.serialize_field("qCom", &format!("{:.4}", self.quantity))?;
+        state.serialize_field(
+            "vUnCom",
+            &format!("{:.2}", self.total_value / self.quantity),
+        )?;
+        state.serialize_field("vProd", &format!("{:.2}", self.total_value))?;
+        state.serialize_field("cEANTrib", gtin)?;
+        state.serialize_field("uTrib", &self.tribute_unit)?;
+        state.serialize_field("qTrib", &format!("{:.4}", self.tribute_quantity))?;
+        state.serialize_field("vUnTrib", &format!("{:.2}", self.tribute_unit_value))?;
+        if let Some(discount_value) = &self.discount_value {
+            state.serialize_field("vDesc", &format!("{:.4}", discount_value))?;
+        }
+        if let Some(other_value) = &self.other_value {
+            state.serialize_field("vOutro", &format!("{:.4}", other_value))?;
+        }
+        state.serialize_field("indTot", if self.included { &1 } else { &0 })?;
+        state.end()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[repr(u8)]
+#[serde(from = "u8", into = "u8")]
 pub enum Origin {
     National = 0,
     NationalInConformity = 4,
@@ -170,26 +272,109 @@ pub enum Origin {
     ForeignInternalMarketNoSimilar = 7,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl From<u8> for Origin {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Origin::National,
+            1 => Origin::Foreign,
+            2 => Origin::ForeignInternalMarket,
+            3 => Origin::NationalContentBetween40And70,
+            4 => Origin::NationalInConformity,
+            5 => Origin::NationalContentBelow40,
+            6 => Origin::ForeignNoSimilar,
+            7 => Origin::ForeignInternalMarketNoSimilar,
+            8 => Origin::NationalContentAbove70,
+            _ => panic!("Invalid origin value: {}", value),
+        }
+    }
+}
+
+impl From<Origin> for u8 {
+    fn from(value: Origin) -> Self {
+        value as u8
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[repr(u8)]
+#[serde(from = "u8", into = "u8")]
 pub enum CSOSN {
     FinalConsumer = 102,
 }
 
+impl From<u8> for CSOSN {
+    fn from(value: u8) -> Self {
+        match value {
+            102 => CSOSN::FinalConsumer,
+            _ => panic!("Invalid CSOSN value: {}", value),
+        }
+    }
+}
+
+impl From<CSOSN> for u8 {
+    fn from(value: CSOSN) -> Self {
+        value as u8
+    }
+}
+
+/// ICMS structure for CSOSN 102
+///
+/// origin: Origin of the product (orig)
+/// csosn: CSOSN code (CSOSN)
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ICMSSN102 {
+    #[serde(rename = "orig")]
     pub origin: Origin,
+    #[serde(rename = "CSOSN")]
     pub csosn: CSOSN,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub enum ICMS {
     ICMSSN102(ICMSSN102),
 }
 
+impl Serialize for ICMS {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ICMS::ICMSSN102(data) => {
+                let mut state = serializer.serialize_struct("ICMS", 1)?;
+                state.serialize_field("ICMSSN102", data)?;
+                state.end()
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
+pub struct Tax {
+    #[serde(rename = "ICMS")]
+    pub icms: ICMS,
+}
+
+/// Detail structure based on the XML structure of the NFe
+///
+/// item: Item structure (prod)
+/// icms: ICMS structure (imposto->ICMS)
+#[derive(Deserialize, Debug)]
 pub struct Detail {
     pub item: Item,
-    pub icms: ICMS,
+    pub tax: Tax,
+}
+
+impl Serialize for Detail {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("det", 2)?;
+        state.serialize_field("prod", &self.item)?;
+        state.serialize_field("imposto", &self.tax)?;
+        state.end()
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -220,5 +405,70 @@ impl Serialize for Details {
             sequence.serialize_element(&element)?;
         }
         sequence.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::canonicalize_str;
+
+    #[test]
+    fn serialize_icms() {
+        let icms = ICMS::ICMSSN102(ICMSSN102 {
+            origin: Origin::National,
+            csosn: CSOSN::FinalConsumer,
+        });
+
+        let serialized = quick_xml::se::to_string(&icms);
+
+        match serialized {
+            Ok(xml) => assert_eq!(
+                canonicalize_str(&xml).unwrap(),
+                "<ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS>"
+            ),
+            Err(e) => panic!("Failed to serialize ICMS {}", e.to_string()),
+        }
+    }
+
+    #[test]
+    fn serialize_detail() {
+        let detail = Detail {
+            tax: Tax {
+                icms: ICMS::ICMSSN102(ICMSSN102 {
+                    csosn: CSOSN::FinalConsumer,
+                    origin: Origin::National,
+                }),
+            },
+            item: Item {
+                cfop: 5403,
+                code: "7896235354499".to_string(),
+                description: "desodorante aerosol monange 200ML".to_string(),
+                ncm: 33072010,
+                gtin: Some("7896235354499".to_string()),
+                included: true,
+                quantity: 3.0f64,
+                total_value: 18.99f64 * 3.0f64,
+                unit: "UN".to_string(),
+                tribute_unit: "UN".to_string(),
+                tribute_quantity: 3.0f64,
+                tribute_unit_value: 18.99f64,
+                discount_value: None,
+                other_value: None,
+            },
+        };
+
+        let serialized = quick_xml::se::to_string(&detail);
+
+        match serialized {
+            Ok(xml) => {
+                let canonicalized = canonicalize_str(&xml).unwrap();
+                assert_eq!(
+                    canonicalized,
+                    include_str!("../../tests/fixtures/detail.xml")
+                );
+            }
+            Err(e) => panic!("Failed to serialize detail {}", e.to_string()),
+        }
     }
 }
