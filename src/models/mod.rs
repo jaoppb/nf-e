@@ -150,7 +150,10 @@ impl Serialize for Identification {
 /// city: City (cMun, xMun)
 /// state: State (UF)
 /// zip_code: ZIP code (CEP) - Only numbers
-#[derive(Serialize, Deserialize, Debug)]
+/// telephone: Telephone number (fone) - Only numbers
+/// country_name: Country name (xPais) - Fixed value "Brasil"
+/// country_code: Country code (cPais) - Fixed value 1058
+#[derive(Deserialize, Debug)]
 pub struct Address {
     pub line_1: String,
     pub line_2: Option<String>,
@@ -159,6 +162,31 @@ pub struct Address {
     pub city: City,
     pub state: State,
     pub zip_code: String,
+    pub telephone: String,
+}
+
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let len = 7 + self.line_2.is_some() as usize;
+        let mut state = serializer.serialize_struct("enderEmit", len)?;
+        state.serialize_field("xLgr", &self.line_1)?;
+        if let Some(line_2) = &self.line_2 {
+            state.serialize_field("xCpl", line_2)?;
+        }
+        state.serialize_field("nro", &self.number)?;
+        state.serialize_field("xBairro", &self.neighborhood)?;
+        state.serialize_field("cMun", &self.city.code)?;
+        state.serialize_field("xMun", &self.city.name)?;
+        state.serialize_field("UF", self.state.acronym())?;
+        state.serialize_field("CEP", &self.zip_code)?;
+        state.serialize_field("fone", &self.telephone)?;
+        state.serialize_field("xPais", &"Brasil".to_string())?;
+        state.serialize_field("cPais", &1058)?;
+        state.end()
+    }
 }
 
 /// Taxable entity identifier
@@ -410,7 +438,9 @@ mod tests {
             model: Model::NFCe,
             series: 1,
             number: 12345,
-            emission_date: chrono::Local.with_ymd_and_hms(2023, 10, 5, 14, 30, 0).unwrap(),
+            emission_date: chrono::Local
+                .with_ymd_and_hms(2023, 10, 5, 14, 30, 0)
+                .unwrap(),
             date: None,
             r#type: Operation::Outgoing,
             destination: DestinationTarget::Internal,
@@ -435,6 +465,36 @@ mod tests {
                 );
             }
             Err(e) => panic!("Failed to serialize identification {}", e.to_string()),
+        }
+    }
+
+    #[test]
+    fn serialize_address() {
+        let address = Address {
+            line_1: "Rua Exemplo".to_string(),
+            line_2: Some("Loja 1".to_string()),
+            number: "123".to_string(),
+            neighborhood: "Centro".to_string(),
+            city: City {
+                code: 3106200,
+                name: "Belo Horizonte".to_string(),
+            },
+            state: State::MinasGerais,
+            zip_code: "01001000".to_string(),
+            telephone: "3132123456".to_string(),
+        };
+
+        let serialized = quick_xml::se::to_string(&address);
+
+        match serialized {
+            Ok(xml) => {
+                let canonicalized = canonicalize_str(&xml).unwrap();
+                assert_eq!(
+                    canonicalized,
+                    include_str!("../../tests/fixtures/address.xml")
+                );
+            }
+            Err(e) => panic!("Failed to serialize address {}", e.to_string()),
         }
     }
 }

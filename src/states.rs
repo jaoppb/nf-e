@@ -44,7 +44,7 @@ pub struct Location {
 }
 
 impl State {
-    fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         match self {
             State::Rondonia => "Rondônia",
             State::Acre => "Acre",
@@ -73,6 +73,38 @@ impl State {
             State::MatoGrosso => "Mato Grosso",
             State::Goias => "Goiás",
             State::DistritoFederal => "Distrito Federal",
+        }
+    }
+
+    pub(crate) fn acronym(&self) -> &str {
+        match self {
+            State::Rondonia => "RO",
+            State::Acre => "AC",
+            State::Amazonas => "AM",
+            State::Roraima => "RR",
+            State::Para => "PA",
+            State::Amapa => "AP",
+            State::Tocantins => "TO",
+            State::Maranhao => "MA",
+            State::Piaui => "PI",
+            State::Ceara => "CE",
+            State::RioGrandeDoNorte => "RN",
+            State::Paraiba => "PB",
+            State::Pernambuco => "PE",
+            State::Alagoas => "AL",
+            State::Sergipe => "SE",
+            State::Bahia => "BA",
+            State::MinasGerais => "MG",
+            State::EspiritoSanto => "ES",
+            State::RioDeJaneiro => "RJ",
+            State::SaoPaulo => "SP",
+            State::Parana => "PR",
+            State::SantaCatarina => "SC",
+            State::RioGrandeDoSul => "RS",
+            State::MatoGrossoDoSul => "MS",
+            State::MatoGrosso => "MT",
+            State::Goias => "GO",
+            State::DistritoFederal => "DF",
         }
     }
 }
