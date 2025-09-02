@@ -112,12 +112,14 @@ impl Serialize for Identification {
         state.serialize_field("mod", &(self.model.clone() as u8))?;
         state.serialize_field("serie", &self.series)?;
         state.serialize_field("nNF", &self.number)?;
-        state.serialize_field("dhEmi", &self.emission_date.to_utc())?;
+        state.serialize_field("dhEmi", &self.emission_date.to_rfc3339())?;
         if let Some(date) = &self.date {
             state.serialize_field("dhSaiEnt", &date.to_utc())?;
         }
         state.serialize_field("tpNF", &(self.r#type.clone() as u8))?;
         state.serialize_field("idDest", &(self.destination.clone() as u8))?;
+        state.serialize_field("cMunFG", &self.location.city.code)?;
+        state.serialize_field("xMun", &self.location.city.name)?;
         if let Some(printing_type) = &self.printing_type {
             state.serialize_field("tpImp", &(printing_type.clone() as u8))?;
         }
@@ -332,6 +334,7 @@ impl Serialize for Details {
 mod tests {
     use super::*;
     use crate::utils::canonicalize_str;
+    use chrono::TimeZone;
 
     #[test]
     fn serialize_icms() {
@@ -389,6 +392,49 @@ mod tests {
                 );
             }
             Err(e) => panic!("Failed to serialize detail {}", e.to_string()),
+        }
+    }
+
+    #[test]
+    fn serialize_identification() {
+        let identification = Identification {
+            location: Location {
+                state: State::MinasGerais,
+                city: City {
+                    code: 3106200,
+                    name: "Belo Horizonte".to_string(),
+                },
+            },
+            numeric_code: 12345678,
+            operation_nature: "Venda de mercadoria".to_string(),
+            model: Model::NFCe,
+            series: 1,
+            number: 12345,
+            emission_date: chrono::Local.with_ymd_and_hms(2023, 10, 5, 14, 30, 0).unwrap(),
+            date: None,
+            r#type: Operation::Outgoing,
+            destination: DestinationTarget::Internal,
+            printing_type: Some(DanfeGeneration::NFCe),
+            emission_type: EmissionType::Normal,
+            verifier_digit: 5,
+            environment: Environment::Production,
+            finality: Finality::Normal,
+            consumer: true,
+            presence: Some(Presence::InplaceIndoor),
+            intermediator: None,
+        };
+
+        let serialized = quick_xml::se::to_string(&identification);
+
+        match serialized {
+            Ok(xml) => {
+                let canonicalized = canonicalize_str(&xml).unwrap();
+                assert_eq!(
+                    canonicalized,
+                    include_str!("../../tests/fixtures/identification.xml")
+                );
+            }
+            Err(e) => panic!("Failed to serialize identification {}", e.to_string()),
         }
     }
 }
