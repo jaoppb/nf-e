@@ -1,4 +1,6 @@
-use serde::{Deserialize, Serialize};
+use crate::models::ICMSSN102;
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Model {
@@ -83,3 +85,84 @@ pub struct CPF([u8; 11]);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IE([u8; 14]);
+
+
+#[derive(Deserialize, Debug)]
+pub enum ICMS {
+    ICMSSN102(ICMSSN102),
+}
+
+impl Serialize for ICMS {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ICMS::ICMSSN102(data) => {
+                let mut state = serializer.serialize_struct("ICMS", 1)?;
+                state.serialize_field("ICMSSN102", data)?;
+                state.end()
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[repr(u8)]
+#[serde(from = "u8", into = "u8")]
+pub enum CSOSN {
+    FinalConsumer = 102,
+}
+
+impl From<u8> for CSOSN {
+    fn from(value: u8) -> Self {
+        match value {
+            102 => CSOSN::FinalConsumer,
+            _ => panic!("Invalid CSOSN value: {}", value),
+        }
+    }
+}
+
+impl From<CSOSN> for u8 {
+    fn from(value: CSOSN) -> Self {
+        value as u8
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[repr(u8)]
+#[serde(from = "u8", into = "u8")]
+pub enum Origin {
+    National = 0,
+    NationalInConformity = 4,
+    NationalContentBelow40 = 5,
+    NationalContentBetween40And70 = 3,
+    NationalContentAbove70 = 8,
+    Foreign = 1,
+    ForeignInternalMarket = 2,
+    ForeignNoSimilar = 6,
+    ForeignInternalMarketNoSimilar = 7,
+}
+
+impl From<u8> for Origin {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Origin::National,
+            1 => Origin::Foreign,
+            2 => Origin::ForeignInternalMarket,
+            3 => Origin::NationalContentBetween40And70,
+            4 => Origin::NationalInConformity,
+            5 => Origin::NationalContentBelow40,
+            6 => Origin::ForeignNoSimilar,
+            7 => Origin::ForeignInternalMarketNoSimilar,
+            8 => Origin::NationalContentAbove70,
+            _ => panic!("Invalid origin value: {}", value),
+        }
+    }
+}
+
+impl From<Origin> for u8 {
+    fn from(value: Origin) -> Self {
+        value as u8
+    }
+}
