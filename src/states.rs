@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct City {
     pub code: u32,
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum State {
     Rondonia = 11,
     Acre = 12,
@@ -37,7 +37,44 @@ pub enum State {
     DistritoFederal = 53,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for State {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            11 => Ok(State::Rondonia),
+            12 => Ok(State::Acre),
+            13 => Ok(State::Amazonas),
+            14 => Ok(State::Roraima),
+            15 => Ok(State::Para),
+            16 => Ok(State::Amapa),
+            17 => Ok(State::Tocantins),
+            21 => Ok(State::Maranhao),
+            22 => Ok(State::Piaui),
+            23 => Ok(State::Ceara),
+            24 => Ok(State::RioGrandeDoNorte),
+            25 => Ok(State::Paraiba),
+            26 => Ok(State::Pernambuco),
+            27 => Ok(State::Alagoas),
+            28 => Ok(State::Sergipe),
+            29 => Ok(State::Bahia),
+            31 => Ok(State::MinasGerais),
+            32 => Ok(State::EspiritoSanto),
+            33 => Ok(State::RioDeJaneiro),
+            35 => Ok(State::SaoPaulo),
+            41 => Ok(State::Parana),
+            42 => Ok(State::SantaCatarina),
+            43 => Ok(State::RioGrandeDoSul),
+            50 => Ok(State::MatoGrossoDoSul),
+            51 => Ok(State::MatoGrosso),
+            52 => Ok(State::Goias),
+            53 => Ok(State::DistritoFederal),
+            _ => Err(format!("Invalid state code: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Location {
     pub state: State,
     pub city: City,

@@ -2,26 +2,63 @@ use crate::models::ICMSSN102;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Model {
     NFe = 55,
     NFCe = 65,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for Model {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            55 => Ok(Model::NFe),
+            65 => Ok(Model::NFCe),
+            _ => Err(format!("Invalid model value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Operation {
     Incoming = 0,
     Outgoing = 1,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for Operation {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Operation::Incoming),
+            1 => Ok(Operation::Outgoing),
+            _ => Err(format!("Invalid operation value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum DestinationTarget {
     Internal = 1,
     Interstate = 2,
     External = 3,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for DestinationTarget {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(DestinationTarget::Internal),
+            2 => Ok(DestinationTarget::Interstate),
+            3 => Ok(DestinationTarget::External),
+            _ => Err(format!("Invalid destination target value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum DanfeGeneration {
     NormalPortrait = 1,
     NormalLandscape = 2,
@@ -30,7 +67,22 @@ pub enum DanfeGeneration {
     NFCeVirtual = 5,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for DanfeGeneration {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(DanfeGeneration::NormalPortrait),
+            2 => Ok(DanfeGeneration::NormalLandscape),
+            3 => Ok(DanfeGeneration::Simplified),
+            4 => Ok(DanfeGeneration::NFCe),
+            5 => Ok(DanfeGeneration::NFCeVirtual),
+            _ => Err(format!("Invalid DANFE generation value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum EmissionType {
     Normal = 1,
     FSIA = 2,
@@ -41,13 +93,42 @@ pub enum EmissionType {
     Offline = 9,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for EmissionType {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(EmissionType::Normal),
+            2 => Ok(EmissionType::FSIA),
+            4 => Ok(EmissionType::EPEC),
+            5 => Ok(EmissionType::FSDA),
+            6 => Ok(EmissionType::SVCAN),
+            7 => Ok(EmissionType::SVCRS),
+            9 => Ok(EmissionType::Offline),
+            _ => Err(format!("Invalid emission type value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Environment {
     Production = 1,
     Homologation = 2,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for Environment {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Environment::Production),
+            2 => Ok(Environment::Homologation),
+            _ => Err(format!("Invalid environment value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Finality {
     Normal = 1,
     Complementary = 2,
@@ -55,7 +136,21 @@ pub enum Finality {
     Cancellation = 4,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for Finality {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Finality::Normal),
+            2 => Ok(Finality::Complementary),
+            3 => Ok(Finality::Adjustment),
+            4 => Ok(Finality::Cancellation),
+            _ => Err(format!("Invalid finality value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Presence {
     InplaceIndoor = 1,
     InplaceOutdoor = 5,
@@ -65,25 +160,52 @@ pub enum Presence {
     Other = 9,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for Presence {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Presence::InplaceIndoor),
+            2 => Ok(Presence::Internet),
+            3 => Ok(Presence::Teleservice),
+            4 => Ok(Presence::Delivery),
+            5 => Ok(Presence::InplaceOutdoor),
+            9 => Ok(Presence::Other),
+            _ => Err(format!("Invalid presence value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Intermediator {
     External = 1,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl TryFrom<u8> for Intermediator {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Intermediator::External),
+            _ => Err(format!("Invalid intermediator value: {}", value)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Document {
     CNPJ(CNPJ),
     CPF(CPF),
     IE(IE),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct CNPJ(pub String);
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct CPF(pub String);
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct IE(pub String);
 
 #[derive(Debug, PartialEq)]
@@ -126,7 +248,7 @@ impl<'de> Deserialize<'de> for ICMS {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[repr(u8)]
 #[serde(from = "u8", into = "u8")]
 pub enum CSOSN {
@@ -148,10 +270,9 @@ impl From<CSOSN> for u8 {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[repr(u8)]
 #[serde(from = "u8", into = "u8")]
-#[derive(PartialEq)]
 pub enum Origin {
     National = 0,
     NationalInConformity = 4,

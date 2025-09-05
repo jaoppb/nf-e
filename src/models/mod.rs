@@ -63,7 +63,7 @@ impl Info {
 /// intermediator: Intermediator information (intermed) - Optional
 /// emission_process: Emission process (procEmi) - Fixed value "0"
 /// emission_version: Emission version (verProc) - Library version
-#[derive(Deserialize, Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Identification {
     pub location: Location,
     pub numeric_code: u32,
@@ -138,6 +138,115 @@ impl Serialize for Identification {
         state.serialize_field("procEmi", &self.emission_process())?;
         state.serialize_field("verProc", &self.emission_version())?;
         state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Identification {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct IdentificationHelper {
+            #[serde(rename = "cUF")]
+            c_uf: u8,
+            #[serde(rename = "cNF")]
+            c_nf: u32,
+            #[serde(rename = "natOp")]
+            nat_op: String,
+            #[serde(rename = "mod")]
+            model: u8,
+            #[serde(rename = "serie")]
+            serie: u8,
+            #[serde(rename = "nNF")]
+            n_nf: u32,
+            #[serde(rename = "dhEmi")]
+            dh_emi: String,
+            #[serde(rename = "dhSaiEnt")]
+            dh_sai_ent: Option<String>,
+            #[serde(rename = "tpNF")]
+            tp_nf: u8,
+            #[serde(rename = "idDest")]
+            id_dest: u8,
+            #[serde(rename = "cMunFG")]
+            c_mun_fg: u32,
+            #[serde(rename = "xMun")]
+            x_mun: String,
+            #[serde(rename = "tpImp")]
+            tp_imp: Option<u8>,
+            #[serde(rename = "tpEmis")]
+            tp_emis: u8,
+            #[serde(rename = "cDV")]
+            c_dv: u8,
+            #[serde(rename = "tpAmb")]
+            tp_amb: u8,
+            #[serde(rename = "finNFe")]
+            fin_nfe: u8,
+            #[serde(rename = "indFinal")]
+            ind_final: u8,
+            #[serde(rename = "indPres")]
+            ind_pres: u8,
+            #[serde(rename = "intermed")]
+            intermed: Option<Intermediator>,
+        }
+
+        let helper = IdentificationHelper::deserialize(deserializer)?;
+        let state = State::try_from(helper.c_uf).map_err(serde::de::Error::custom)?;
+        let model = Model::try_from(helper.model).map_err(serde::de::Error::custom)?;
+        let r#type = Operation::try_from(helper.tp_nf).map_err(serde::de::Error::custom)?;
+        let destination =
+            DestinationTarget::try_from(helper.id_dest).map_err(serde::de::Error::custom)?;
+        let printing_type = match helper.tp_imp {
+            Some(v) => Some(DanfeGeneration::try_from(v).map_err(serde::de::Error::custom)?),
+            None => None,
+        };
+        let emission_type =
+            EmissionType::try_from(helper.tp_emis).map_err(serde::de::Error::custom)?;
+        let environment = Environment::try_from(helper.tp_amb).map_err(serde::de::Error::custom)?;
+        let finality = Finality::try_from(helper.fin_nfe).map_err(serde::de::Error::custom)?;
+        let consumer = helper.ind_final == 1;
+        let presence = match helper.ind_pres {
+            0 => None,
+            1..=6 => Some(Presence::try_from(helper.ind_pres).map_err(serde::de::Error::custom)?),
+            _ => return Err(serde::de::Error::custom("Invalid ind_pres value")),
+        };
+        let emission_date = chrono::DateTime::parse_from_rfc3339(&helper.dh_emi)
+            .map_err(serde::de::Error::custom)?
+            .with_timezone(&chrono::Local);
+        let date = match helper.dh_sai_ent {
+            Some(v) => Some(
+                chrono::DateTime::parse_from_rfc3339(&v)
+                    .map_err(serde::de::Error::custom)?
+                    .with_timezone(&chrono::Local),
+            ),
+            None => None,
+        };
+        Ok(Identification {
+            location: Location {
+                state,
+                city: City {
+                    code: helper.c_mun_fg,
+                    name: helper.x_mun,
+                },
+            },
+            numeric_code: helper.c_nf,
+            operation_nature: helper.nat_op,
+            model,
+            series: helper.serie,
+            number: helper.n_nf,
+            emission_date,
+            date,
+            r#type,
+            destination,
+            printing_type,
+            emission_type,
+            verifier_digit: helper.c_dv,
+            environment,
+            finality,
+            consumer,
+            presence,
+            intermediator: helper.intermed,
+        })
     }
 }
 
@@ -546,18 +655,13 @@ mod tests {
             },
         };
 
-        let serialized = quick_xml::se::to_string(&info);
+        let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
 
-        match serialized {
-            Ok(xml) => {
-                let canonicalized = canonicalize_xml(&xml).unwrap();
-                assert_eq!(
-                    canonicalized,
-                    canonicalize_xml(include_str!("../../tests/fixtures/info.xml")).unwrap()
-                );
-            }
-            Err(e) => panic!("Failed to serialize info {}", e.to_string()),
-        }
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../../tests/fixtures/info.xml")).unwrap()
+        );
     }
 
     fn setup_identification() -> Identification {
@@ -593,19 +697,21 @@ mod tests {
 
     #[test]
     fn serialize_identification() {
-        let serialized = quick_xml::se::to_string(&setup_identification());
+        let serialized = quick_xml::se::to_string(&setup_identification())
+            .expect("Failed to serialize identification");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../../tests/fixtures/identification.xml")).unwrap()
+        );
+    }
 
-        match serialized {
-            Ok(xml) => {
-                let canonicalized = canonicalize_xml(&xml).unwrap();
-                assert_eq!(
-                    canonicalized,
-                    canonicalize_xml(include_str!("../../tests/fixtures/identification.xml"))
-                        .unwrap()
-                );
-            }
-            Err(e) => panic!("Failed to serialize identification {}", e.to_string()),
-        }
+    #[test]
+    fn deserialize_identification() {
+        let parsed =
+            canonicalize_xml(include_str!("../../tests/fixtures/identification.xml")).unwrap();
+        let deserialized: Identification = quick_xml::de::from_str(&parsed).unwrap();
+        assert_eq!(deserialized, setup_identification());
     }
 
     fn setup_address() -> Address {
@@ -627,19 +733,12 @@ mod tests {
     #[test]
     fn serialize_address() {
         let address = setup_address();
-
-        let serialized = quick_xml::se::to_string(&address);
-
-        match serialized {
-            Ok(xml) => {
-                let canonicalized = canonicalize_xml(&xml).unwrap();
-                assert_eq!(
-                    canonicalized,
-                    canonicalize_xml(include_str!("../../tests/fixtures/address.xml")).unwrap()
-                );
-            }
-            Err(e) => panic!("Failed to serialize address {}", e.to_string()),
-        }
+        let serialized = quick_xml::se::to_string(&address).expect("Failed to serialize address");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../../tests/fixtures/address.xml")).unwrap()
+        );
     }
 
     fn setup_issuer() -> Issuer {
