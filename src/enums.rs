@@ -113,11 +113,12 @@ impl<'de> Deserialize<'de> for ICMS {
     {
         #[derive(Deserialize)]
         struct ICMSHelper {
-            ICMSSN102: Option<ICMSSN102>,
+            #[serde(rename = "ICMSSN102")]
+            icmssn102: Option<ICMSSN102>,
         }
 
         let helper = ICMSHelper::deserialize(deserializer)?;
-        if let Some(data) = helper.ICMSSN102 {
+        if let Some(data) = helper.icmssn102 {
             Ok(ICMS::ICMSSN102(data))
         } else {
             Err(serde::de::Error::custom("Unknown ICMS variant"))
