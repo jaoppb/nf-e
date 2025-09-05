@@ -1,9 +1,9 @@
 use crate::enums::*;
 
-use crate::states::{City, Location, State};
 use crate::LIBRARY_VERSION;
+use crate::states::{City, Location, State};
 use serde::ser::SerializeSeq;
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, ser::SerializeStruct};
 
 /// Main structure based on the XML structure of the NFe
 ///
@@ -25,12 +25,12 @@ impl Serialize for Info {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("Info", 5)?;
+        let mut state = serializer.serialize_struct("infNFe", 5)?;
         state.serialize_field("@versao", &self.version())?;
         state.serialize_field("@id", &self.id)?;
         state.serialize_field("ide", &self.identification)?;
         state.serialize_field("emit", &self.issuer)?;
-        state.serialize_field("details", &self.details)?;
+        state.serialize_field("det", &self.details)?;
         state.end()
     }
 }
@@ -195,6 +195,7 @@ impl Serialize for Address {
 /// ie: State registration (IE) - Use "ISENTO" if exempt
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TaxableAddress {
+    #[serde(flatten)]
     pub address: Address,
     pub ie: IE,
 }
@@ -207,9 +208,13 @@ pub struct TaxableAddress {
 /// address: Taxable address of the issuer (enderEmit)
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Issuer {
+    #[serde(rename = "$value")]
     pub document: Document,
+    #[serde(rename = "xNome")]
     pub name: String,
+    #[serde(rename = "xFant")]
     pub trade_name: Option<String>,
+    #[serde(rename = "enderEmit")]
     pub address: TaxableAddress,
 }
 
@@ -441,7 +446,7 @@ impl Serialize for Details {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::canonicalize_str;
+    use crate::utils::canonicalize_xml;
     use chrono::TimeZone;
 
     #[test]
@@ -456,17 +461,17 @@ mod tests {
 
         match serialized {
             Ok(xml) => assert_eq!(
-                canonicalize_str(&xml).unwrap(),
-                include_str!("../../tests/fixtures/tax.xml")
+                canonicalize_xml(&xml).unwrap(),
+                canonicalize_xml(include_str!("../../tests/fixtures/tax.xml")).unwrap()
             ),
             Err(e) => panic!("Failed to serialize Tax {}", e.to_string()),
         }
     }
 
     #[test]
-    fn deserialize_icms() {
-        let xml = include_str!("../../tests/fixtures/tax.xml");
-        let deserialized: Tax = quick_xml::de::from_str(xml).unwrap();
+    fn deserialize_tax() {
+        let xml = canonicalize_xml(include_str!("../../tests/fixtures/tax.xml")).unwrap();
+        let deserialized: Tax = quick_xml::de::from_str(&xml).unwrap();
 
         assert_eq!(
             deserialized.icms,
@@ -512,10 +517,10 @@ mod tests {
 
         match serialized {
             Ok(xml) => {
-                let canonicalized = canonicalize_str(&xml).unwrap();
+                let canonicalized = canonicalize_xml(&xml).unwrap();
                 assert_eq!(
                     canonicalized,
-                    include_str!("../../tests/fixtures/detail.xml")
+                    canonicalize_xml(include_str!("../../tests/fixtures/detail.xml")).unwrap()
                 );
             }
             Err(e) => panic!("Failed to serialize detail {}", e.to_string()),
@@ -524,18 +529,39 @@ mod tests {
 
     #[test]
     fn deserialize_detail() {
-        let detail = include_str!("../../tests/fixtures/detail.xml");
-        let deserialized: Detail = quick_xml::de::from_str(detail).unwrap();
+        let detail = canonicalize_xml(include_str!("../../tests/fixtures/detail.xml")).unwrap();
+        let deserialized: Detail = quick_xml::de::from_str(&detail).unwrap();
 
-        assert_eq!(
-            deserialized,
-            setup_detail()
-        );
+        assert_eq!(deserialized, setup_detail());
     }
 
     #[test]
-    fn serialize_identification() {
-        let identification = Identification {
+    fn serialize_info() {
+        let info = Info {
+            id: "NFe12345678901234567890123456789012345678901234".to_string(),
+            identification: setup_identification(),
+            issuer: setup_issuer(),
+            details: Details {
+                details: vec![setup_detail(), setup_detail()],
+            },
+        };
+
+        let serialized = quick_xml::se::to_string(&info);
+
+        match serialized {
+            Ok(xml) => {
+                let canonicalized = canonicalize_xml(&xml).unwrap();
+                assert_eq!(
+                    canonicalized,
+                    canonicalize_xml(include_str!("../../tests/fixtures/info.xml")).unwrap()
+                );
+            }
+            Err(e) => panic!("Failed to serialize info {}", e.to_string()),
+        }
+    }
+
+    fn setup_identification() -> Identification {
+        Identification {
             location: Location {
                 state: State::MinasGerais,
                 city: City {
@@ -562,25 +588,28 @@ mod tests {
             consumer: true,
             presence: Some(Presence::InplaceIndoor),
             intermediator: None,
-        };
+        }
+    }
 
-        let serialized = quick_xml::se::to_string(&identification);
+    #[test]
+    fn serialize_identification() {
+        let serialized = quick_xml::se::to_string(&setup_identification());
 
         match serialized {
             Ok(xml) => {
-                let canonicalized = canonicalize_str(&xml).unwrap();
+                let canonicalized = canonicalize_xml(&xml).unwrap();
                 assert_eq!(
                     canonicalized,
-                    include_str!("../../tests/fixtures/identification.xml")
+                    canonicalize_xml(include_str!("../../tests/fixtures/identification.xml"))
+                        .unwrap()
                 );
             }
             Err(e) => panic!("Failed to serialize identification {}", e.to_string()),
         }
     }
 
-    #[test]
-    fn serialize_address() {
-        let address = Address {
+    fn setup_address() -> Address {
+        Address {
             line_1: "Rua Exemplo".to_string(),
             line_2: Some("Loja 1".to_string()),
             number: "123".to_string(),
@@ -592,19 +621,36 @@ mod tests {
             state: State::MinasGerais,
             zip_code: "01001000".to_string(),
             telephone: "3132123456".to_string(),
-        };
+        }
+    }
+
+    #[test]
+    fn serialize_address() {
+        let address = setup_address();
 
         let serialized = quick_xml::se::to_string(&address);
 
         match serialized {
             Ok(xml) => {
-                let canonicalized = canonicalize_str(&xml).unwrap();
+                let canonicalized = canonicalize_xml(&xml).unwrap();
                 assert_eq!(
                     canonicalized,
-                    include_str!("../../tests/fixtures/address.xml")
+                    canonicalize_xml(include_str!("../../tests/fixtures/address.xml")).unwrap()
                 );
             }
             Err(e) => panic!("Failed to serialize address {}", e.to_string()),
+        }
+    }
+
+    fn setup_issuer() -> Issuer {
+        Issuer {
+            document: Document::CNPJ(CNPJ("12345678000195".to_string())),
+            name: "Empresa Exemplo LTDA".to_string(),
+            trade_name: Some("Empresa Exemplo".to_string()),
+            address: TaxableAddress {
+                address: setup_address(),
+                ie: IE("123456789".to_string()),
+            },
         }
     }
 }

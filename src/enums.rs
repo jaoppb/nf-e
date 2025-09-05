@@ -78,13 +78,13 @@ pub enum Document {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CNPJ([u8; 14]);
+pub struct CNPJ(pub String);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CPF([u8; 11]);
+pub struct CPF(pub String);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct IE([u8; 14]);
+pub struct IE(pub String);
 
 #[derive(Debug, PartialEq)]
 pub enum ICMS {
