@@ -307,3 +307,85 @@ impl From<Origin> for u8 {
         value as u8
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::utils::canonicalize_xml;
+
+    use super::*;
+
+    #[test]
+    fn serialize_cnpj() {
+        let cnpj = Document::CNPJ(CNPJ("12345678000195".to_string()));
+        let serialized = quick_xml::se::to_string(&cnpj).unwrap();
+        assert_eq!(serialized, "<CNPJ>12345678000195</CNPJ>");
+    }
+
+    #[test]
+    fn deserialize_cnpj() {
+        let xml = "<CNPJ>12345678000195</CNPJ>";
+        let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
+        assert_eq!(
+            deserialized,
+            Document::CNPJ(CNPJ("12345678000195".to_string()))
+        );
+    }
+
+    #[test]
+    fn serialize_cpf() {
+        let cpf = Document::CPF(CPF("12345678901".to_string()));
+        let serialized = quick_xml::se::to_string(&cpf).unwrap();
+        assert_eq!(serialized, "<CPF>12345678901</CPF>");
+    }
+
+    #[test]
+    fn deserialize_cpf() {
+        let xml = "<CPF>12345678901</CPF>";
+        let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
+        assert_eq!(
+            deserialized,
+            Document::CPF(CPF("12345678901".to_string()))
+        );
+    }
+
+    #[test]
+    fn serialize_ie() {
+        let ie = Document::IE(IE("123456789".to_string()));
+        let serialized = quick_xml::se::to_string(&ie).unwrap();
+        assert_eq!(serialized, "<IE>123456789</IE>");
+    }
+
+    #[test]
+    fn deserialize_ie() {
+        let xml = "<IE>123456789</IE>";
+        let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
+        assert_eq!(
+            deserialized,
+            Document::IE(IE("123456789".to_string()))
+        );
+    }
+
+    #[test]
+    fn serialize_icms() {
+        let icms = ICMS::ICMSSN102(ICMSSN102 {
+            csosn: CSOSN::FinalConsumer,
+            origin: Origin::National,
+        });
+        let serialized = quick_xml::se::to_string(&icms).unwrap();
+        let xml = canonicalize_xml(include_str!("../tests/fixtures/enums/icms.xml")).unwrap();
+        assert_eq!(serialized, xml);
+    }
+
+    #[test]
+    fn deserialize_icms() {
+        let xml = canonicalize_xml(include_str!("../tests/fixtures/enums/icms.xml")).unwrap();
+        let deserialized: ICMS = quick_xml::de::from_str(&xml).unwrap();
+        assert_eq!(
+            deserialized,
+            ICMS::ICMSSN102(ICMSSN102 {
+                csosn: CSOSN::FinalConsumer,
+                origin: Origin::National,
+            })
+        );
+    }
+}
