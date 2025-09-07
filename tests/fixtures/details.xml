@@ -1,45 +1,4 @@
-<infNFe id="NFe12345678901234567890123456789012345678901234" versao="4.00">
-    <ide>
-        <cUF>31</cUF>
-        <cNF>12345678</cNF>
-        <natOp>Venda de mercadoria</natOp>
-        <mod>65</mod>
-        <serie>1</serie>
-        <nNF>12345</nNF>
-        <dhEmi>2023-10-05T14:30:00-03:00</dhEmi>
-        <tpNF>1</tpNF>
-        <idDest>1</idDest>
-        <cMunFG>3106200</cMunFG>
-        <xMun>Belo Horizonte</xMun>
-        <tpImp>4</tpImp>
-        <tpEmis>1</tpEmis>
-        <cDV>5</cDV>
-        <tpAmb>1</tpAmb>
-        <finNFe>1</finNFe>
-        <indFinal>1</indFinal>
-        <indPres>1</indPres>
-        <procEmi>0</procEmi>
-        <verProc>0.1.0</verProc>
-    </ide>
-    <emit>
-        <CNPJ>12345678000195</CNPJ>
-        <xNome>Empresa Exemplo LTDA</xNome>
-        <xFant>Empresa Exemplo</xFant>
-        <enderEmit>
-            <xLgr>Rua Exemplo</xLgr>
-            <xCpl>Loja 1</xCpl>
-            <nro>123</nro>
-            <xBairro>Centro</xBairro>
-            <cMun>3106200</cMun>
-            <xMun>Belo Horizonte</xMun>
-            <UF>MG</UF>
-            <CEP>01001000</CEP>
-            <fone>3132123456</fone>
-            <xPais>Brasil</xPais>
-            <cPais>1058</cPais>
-            <IE>123456789</IE>
-        </enderEmit>
-    </emit>
+<wrapper>
     <det nItem="1">
         <prod>
             <cProd>7896235354499</cProd>
@@ -92,4 +51,4 @@
             </ICMS>
         </imposto>
     </det>
-</infNFe>
+</wrapper>

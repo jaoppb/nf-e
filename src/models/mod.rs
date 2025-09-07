@@ -1,9 +1,8 @@
 use crate::enums::*;
 
-use crate::LIBRARY_VERSION;
 use crate::states::{City, Location, State};
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Serialize, ser::SerializeStruct};
+use crate::LIBRARY_VERSION;
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 /// Main structure based on the XML structure of the NFe
 ///
@@ -12,12 +11,12 @@ use serde::{Deserialize, Serialize, ser::SerializeStruct};
 /// issuer: Issuer structure (emit)
 /// details: Details structure (det)
 /// version: Fixed value "4.00" (@versao)
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq)]
 pub struct Info {
     pub id: String,
     pub identification: Identification,
     pub issuer: Issuer,
-    pub details: Details,
+    pub details: Vec<Detail>,
 }
 
 impl Serialize for Info {
@@ -25,13 +24,69 @@ impl Serialize for Info {
     where
         S: serde::Serializer,
     {
+        #[derive(Serialize)]
+        struct IndexedDetail<'a> {
+            #[serde(flatten)]
+            detail: &'a Detail,
+            #[serde(rename = "@nItem")]
+            index: usize,
+        }
+
         let mut state = serializer.serialize_struct("infNFe", 5)?;
         state.serialize_field("@versao", &self.version())?;
         state.serialize_field("@id", &self.id)?;
         state.serialize_field("ide", &self.identification)?;
         state.serialize_field("emit", &self.issuer)?;
-        state.serialize_field("det", &self.details)?;
+        state.serialize_field(
+            "det",
+            &self
+                .details
+                .iter()
+                .enumerate()
+                .map(|(index, detail)| IndexedDetail {
+                    detail,
+                    index: index + 1,
+                })
+                .collect::<Vec<_>>(),
+        )?;
         state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Info {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct InfoHelper {
+            #[serde(rename = "@versao")]
+            versao: String,
+            #[serde(rename = "@id")]
+            id: String,
+            #[serde(rename = "ide")]
+            identification: Identification,
+            #[serde(rename = "emit")]
+            issuer: Issuer,
+            #[serde(rename = "det")]
+            details: Vec<Detail>,
+        }
+
+        let helper = InfoHelper::deserialize(deserializer)?;
+
+        if helper.versao != "4.00" {
+            return Err(serde::de::Error::custom(format!(
+                "Unsupported version: {}",
+                helper.versao
+            )));
+        }
+
+        Ok(Info {
+            id: helper.id,
+            identification: helper.identification,
+            issuer: helper.issuer,
+            details: helper.details,
+        })
     }
 }
 
@@ -262,7 +317,7 @@ impl<'de> Deserialize<'de> for Identification {
 /// telephone: Telephone number (fone) - Only numbers
 /// country_name: Country name (xPais) - Fixed value "Brasil"
 /// country_code: Country code (cPais) - Fixed value 1058
-#[derive(Deserialize, Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Address {
     pub line_1: String,
     pub line_2: Option<String>,
@@ -298,15 +353,139 @@ impl Serialize for Address {
     }
 }
 
+impl<'de> Deserialize<'de> for Address {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct AddressHelper {
+            #[serde(rename = "xLgr")]
+            x_lgr: String,
+            #[serde(rename = "xCpl")]
+            x_cpl: Option<String>,
+            #[serde(rename = "nro")]
+            nro: String,
+            #[serde(rename = "xBairro")]
+            x_bairro: String,
+            #[serde(rename = "cMun")]
+            c_mun: u32,
+            #[serde(rename = "xMun")]
+            x_mun: String,
+            #[serde(rename = "UF")]
+            uf: String,
+            #[serde(rename = "CEP")]
+            cep: String,
+            #[serde(rename = "fone")]
+            fone: String,
+        }
+
+        let helper = AddressHelper::deserialize(deserializer)?;
+        let state = State::from_acronym(&helper.uf).ok_or_else(|| {
+            serde::de::Error::custom(format!("Invalid state acronym: {}", helper.uf))
+        })?;
+
+        Ok(Address {
+            line_1: helper.x_lgr,
+            line_2: helper.x_cpl,
+            number: helper.nro,
+            neighborhood: helper.x_bairro,
+            city: City {
+                code: helper.c_mun,
+                name: helper.x_mun,
+            },
+            state,
+            zip_code: helper.cep,
+            telephone: helper.fone,
+        })
+    }
+}
+
 /// Taxable entity identifier
 ///
 /// address: Address of the taxable entity
 /// ie: State registration (IE) - Use "ISENTO" if exempt
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TaxableAddress {
-    #[serde(flatten)]
     pub address: Address,
     pub ie: IE,
+}
+
+impl Serialize for TaxableAddress {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("enderEmit", 8)?;
+        state.serialize_field("xLgr", &self.address.line_1)?;
+        if let Some(line_2) = &self.address.line_2 {
+            state.serialize_field("xCpl", line_2)?;
+        }
+        state.serialize_field("nro", &self.address.number)?;
+        state.serialize_field("xBairro", &self.address.neighborhood)?;
+        state.serialize_field("cMun", &self.address.city.code)?;
+        state.serialize_field("xMun", &self.address.city.name)?;
+        state.serialize_field("UF", self.address.state.acronym())?;
+        state.serialize_field("CEP", &self.address.zip_code)?;
+        state.serialize_field("fone", &self.address.telephone)?;
+        state.serialize_field("xPais", &"Brasil".to_string())?;
+        state.serialize_field("cPais", &1058)?;
+        state.serialize_field("IE", &self.ie.0)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for TaxableAddress {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct TaxableAddressHelper {
+            #[serde(rename = "xLgr")]
+            x_lgr: String,
+            #[serde(rename = "xCpl")]
+            x_cpl: Option<String>,
+            #[serde(rename = "nro")]
+            nro: String,
+            #[serde(rename = "xBairro")]
+            x_bairro: String,
+            #[serde(rename = "cMun")]
+            c_mun: u32,
+            #[serde(rename = "xMun")]
+            x_mun: String,
+            #[serde(rename = "UF")]
+            uf: String,
+            #[serde(rename = "CEP")]
+            cep: String,
+            #[serde(rename = "fone")]
+            fone: String,
+            #[serde(rename = "IE")]
+            ie: String,
+        }
+
+        let helper = TaxableAddressHelper::deserialize(deserializer)?;
+        let state = State::from_acronym(&helper.uf).ok_or_else(|| {
+            serde::de::Error::custom(format!("Invalid state acronym: {}", helper.uf))
+        })?;
+
+        Ok(TaxableAddress {
+            address: Address {
+                line_1: helper.x_lgr,
+                line_2: helper.x_cpl,
+                number: helper.nro,
+                neighborhood: helper.x_bairro,
+                city: City {
+                    code: helper.c_mun,
+                    name: helper.x_mun,
+                },
+                state,
+                zip_code: helper.cep,
+                telephone: helper.fone,
+            },
+            ie: IE(helper.ie),
+        })
+    }
 }
 
 /// Issuer structure based on the XML structure of the NFe
@@ -315,7 +494,8 @@ pub struct TaxableAddress {
 /// name: Legal name of the issuer (xNome)
 /// trade_name: Trade name of the issuer (xFant) - Optional
 /// address: Taxable address of the issuer (enderEmit)
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename = "emit")]
 pub struct Issuer {
     #[serde(rename = "$value")]
     pub document: Document,
@@ -521,37 +701,6 @@ pub struct Detail {
     pub tax: Tax,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct Details {
-    pub details: Vec<Detail>,
-}
-
-impl Serialize for Details {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(Serialize)]
-        struct DetailWrapper<'a> {
-            #[serde(flatten)]
-            detail: &'a Detail,
-            #[serde(rename = "@nItem")]
-            n_item: usize,
-        }
-
-        let mut sequence = serializer.serialize_seq(Some(self.details.len()))?;
-        for (index, detail) in self.details.iter().enumerate() {
-            let element = DetailWrapper {
-                detail,
-                n_item: index + 1,
-            };
-
-            sequence.serialize_element(&element)?;
-        }
-        sequence.end()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,6 +740,45 @@ mod tests {
         );
     }
 
+    fn setup_item() -> Item {
+        Item {
+            cfop: 5403,
+            code: "7896235354499".to_string(),
+            description: "desodorante aerosol monange 200ML".to_string(),
+            ncm: 33072010,
+            gtin: Some("7896235354499".to_string()),
+            included: true,
+            quantity: 3.0f64,
+            total_value: 18.99f64 * 3.0f64,
+            unit: "UN".to_string(),
+            tribute_unit: "UN".to_string(),
+            tribute_quantity: 3.0f64,
+            tribute_unit_value: 18.99f64,
+            discount_value: None,
+            other_value: None,
+        }
+    }
+
+    #[test]
+    fn serialize_item() {
+        let item = setup_item();
+        let serialized = quick_xml::se::to_string(&item).expect("Failed to serialize item");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../../tests/fixtures/item.xml")).unwrap()
+        );
+    }
+
+    #[test]
+    fn deserialize_item() {
+        let item = canonicalize_xml(include_str!("../../tests/fixtures/item.xml")).unwrap();
+        let deserialized: Item =
+            quick_xml::de::from_str(&item).expect("Failed to deserialize item");
+
+        assert_eq!(deserialized, setup_item());
+    }
+
     fn setup_detail() -> Detail {
         Detail {
             tax: Tax {
@@ -599,69 +787,56 @@ mod tests {
                     origin: Origin::National,
                 }),
             },
-            item: Item {
-                cfop: 5403,
-                code: "7896235354499".to_string(),
-                description: "desodorante aerosol monange 200ML".to_string(),
-                ncm: 33072010,
-                gtin: Some("7896235354499".to_string()),
-                included: true,
-                quantity: 3.0f64,
-                total_value: 18.99f64 * 3.0f64,
-                unit: "UN".to_string(),
-                tribute_unit: "UN".to_string(),
-                tribute_quantity: 3.0f64,
-                tribute_unit_value: 18.99f64,
-                discount_value: None,
-                other_value: None,
-            },
+            item: setup_item(),
         }
     }
 
     #[test]
     fn serialize_detail() {
         let detail = setup_detail();
-
-        let serialized = quick_xml::se::to_string(&detail);
-
-        match serialized {
-            Ok(xml) => {
-                let canonicalized = canonicalize_xml(&xml).unwrap();
-                assert_eq!(
-                    canonicalized,
-                    canonicalize_xml(include_str!("../../tests/fixtures/detail.xml")).unwrap()
-                );
-            }
-            Err(e) => panic!("Failed to serialize detail {}", e.to_string()),
-        }
+        let serialized = quick_xml::se::to_string(&detail).expect("Failed to serialize detail");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to serialize detail");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../../tests/fixtures/detail.xml")).unwrap()
+        );
     }
 
     #[test]
     fn deserialize_detail() {
         let detail = canonicalize_xml(include_str!("../../tests/fixtures/detail.xml")).unwrap();
-        let deserialized: Detail = quick_xml::de::from_str(&detail).unwrap();
+        let deserialized: Detail =
+            quick_xml::de::from_str(&detail).expect("Failed to deserialize detail");
 
         assert_eq!(deserialized, setup_detail());
     }
 
-    #[test]
-    fn serialize_info() {
-        let info = Info {
+    fn setup_info() -> Info {
+        Info {
             id: "NFe12345678901234567890123456789012345678901234".to_string(),
             identification: setup_identification(),
             issuer: setup_issuer(),
-            details: Details {
-                details: vec![setup_detail(), setup_detail()],
-            },
-        };
+            details: vec![setup_detail(), setup_detail()],
+        }
+    }
 
+    #[test]
+    fn serialize_info() {
+        let info = setup_info();
         let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
-
         let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
         assert_eq!(
             canonicalized,
             canonicalize_xml(include_str!("../../tests/fixtures/info.xml")).unwrap()
         );
+    }
+
+    #[test]
+    fn deserialize_info() {
+        let info = canonicalize_xml(include_str!("../../tests/fixtures/info.xml")).unwrap();
+        let deserialized: Info = quick_xml::de::from_str(&info).unwrap();
+
+        assert_eq!(deserialized, setup_info());
     }
 
     fn setup_identification() -> Identification {
@@ -741,6 +916,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn deserialize_address() {
+        let parsed = canonicalize_xml(include_str!("../../tests/fixtures/address.xml")).unwrap();
+        let deserialized: Address = quick_xml::de::from_str(&parsed).unwrap();
+        assert_eq!(deserialized, setup_address());
+    }
+
     fn setup_issuer() -> Issuer {
         Issuer {
             document: Document::CNPJ(CNPJ("12345678000195".to_string())),
@@ -751,5 +933,23 @@ mod tests {
                 ie: IE("123456789".to_string()),
             },
         }
+    }
+
+    #[test]
+    fn serialize_issuer() {
+        let issuer = setup_issuer();
+        let serialized = quick_xml::se::to_string(&issuer).expect("Failed to serialize issuer");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../../tests/fixtures/issuer.xml")).unwrap()
+        );
+    }
+
+    #[test]
+    fn deserialize_issuer() {
+        let parsed = canonicalize_xml(include_str!("../../tests/fixtures/issuer.xml")).unwrap();
+        let deserialized: Issuer = quick_xml::de::from_str(&parsed).unwrap();
+        assert_eq!(deserialized, setup_issuer());
     }
 }

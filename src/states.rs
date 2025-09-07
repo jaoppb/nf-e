@@ -37,6 +37,41 @@ pub enum State {
     DistritoFederal = 53,
 }
 
+impl State {
+    pub fn from_acronym(acronym: &str) -> Option<Self> {
+        match acronym {
+            "RO" => Some(State::Rondonia),
+            "AC" => Some(State::Acre),
+            "AM" => Some(State::Amazonas),
+            "RR" => Some(State::Roraima),
+            "PA" => Some(State::Para),
+            "AP" => Some(State::Amapa),
+            "TO" => Some(State::Tocantins),
+            "MA" => Some(State::Maranhao),
+            "PI" => Some(State::Piaui),
+            "CE" => Some(State::Ceara),
+            "RN" => Some(State::RioGrandeDoNorte),
+            "PB" => Some(State::Paraiba),
+            "PE" => Some(State::Pernambuco),
+            "AL" => Some(State::Alagoas),
+            "SE" => Some(State::Sergipe),
+            "BA" => Some(State::Bahia),
+            "MG" => Some(State::MinasGerais),
+            "ES" => Some(State::EspiritoSanto),
+            "RJ" => Some(State::RioDeJaneiro),
+            "SP" => Some(State::SaoPaulo),
+            "PR" => Some(State::Parana),
+            "SC" => Some(State::SantaCatarina),
+            "RS" => Some(State::RioGrandeDoSul),
+            "MS" => Some(State::MatoGrossoDoSul),
+            "MT" => Some(State::MatoGrosso),
+            "GO" => Some(State::Goias),
+            "DF" => Some(State::DistritoFederal),
+            _ => None,
+        }
+    }
+}
+
 impl TryFrom<u8> for State {
     type Error = String;
 
