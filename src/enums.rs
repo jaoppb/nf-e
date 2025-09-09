@@ -200,6 +200,12 @@ pub enum Document {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum PersonDocument {
+    CNPJ(CNPJ),
+    CPF(CPF),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct CNPJ(pub String);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

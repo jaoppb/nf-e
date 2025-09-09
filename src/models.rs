@@ -4,6 +4,13 @@ use crate::states::{City, Location, State};
 use crate::LIBRARY_VERSION;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename = "autXML")]
+pub struct Authorized {
+    #[serde(rename = "$value")]
+    pub documents: Vec<PersonDocument>,
+}
+
 /// Main structure based on the XML structure of the NFe
 ///
 /// id: Identifier of the NFe (id) - Format "NFe{chave}"
@@ -17,6 +24,7 @@ pub struct Info {
     pub identification: Identification,
     pub issuer: Issuer,
     pub details: Vec<Detail>,
+    pub authorized: Option<Authorized>,
 }
 
 impl Serialize for Info {
@@ -32,11 +40,14 @@ impl Serialize for Info {
             index: usize,
         }
 
-        let mut state = serializer.serialize_struct("infNFe", 5)?;
+        let len = 5 + self.authorized.is_some() as usize;
+
+        let mut state = serializer.serialize_struct("infNFe", len)?;
         state.serialize_field("@versao", &self.version())?;
         state.serialize_field("@id", &self.id)?;
         state.serialize_field("ide", &self.identification)?;
         state.serialize_field("emit", &self.issuer)?;
+        state.serialize_field("autXML", &self.authorized)?;
         state.serialize_field(
             "det",
             &self
@@ -70,6 +81,8 @@ impl<'de> Deserialize<'de> for Info {
             issuer: Issuer,
             #[serde(rename = "det")]
             details: Vec<Detail>,
+            #[serde(rename = "autXML")]
+            authorized: Option<Authorized>,
         }
 
         let helper = InfoHelper::deserialize(deserializer)?;
@@ -86,6 +99,7 @@ impl<'de> Deserialize<'de> for Info {
             identification: helper.identification,
             issuer: helper.issuer,
             details: helper.details,
+            authorized: helper.authorized,
         })
     }
 }
@@ -817,6 +831,7 @@ mod tests {
             identification: setup_identification(),
             issuer: setup_issuer(),
             details: vec![setup_detail(), setup_detail()],
+            authorized: Some(setup_authorized()),
         }
     }
 
@@ -951,5 +966,32 @@ mod tests {
         let parsed = canonicalize_xml(include_str!("../tests/fixtures/issuer.xml")).unwrap();
         let deserialized: Issuer = quick_xml::de::from_str(&parsed).unwrap();
         assert_eq!(deserialized, setup_issuer());
+    }
+
+    fn setup_authorized() -> Authorized {
+        Authorized {
+            documents: vec![
+                PersonDocument::CNPJ(CNPJ("12345678000195".to_string())),
+                PersonDocument::CPF(CPF("12345678901".to_string())),
+            ],
+        }
+    }
+
+    #[test]
+    fn serialize_authorized() {
+        let authorized = setup_authorized();
+        let serialized = quick_xml::se::to_string(&authorized).expect("Failed to serialize authorized");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../tests/fixtures/authorized.xml")).unwrap()
+        );
+    }
+
+    #[test]
+    fn deserialize_authorized() {
+        let parsed = canonicalize_xml(include_str!("../tests/fixtures/authorized.xml")).unwrap();
+        let deserialized: Authorized = quick_xml::de::from_str(&parsed).unwrap();
+        assert_eq!(deserialized, setup_authorized());
     }
 }

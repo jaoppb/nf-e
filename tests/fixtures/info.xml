@@ -40,6 +40,10 @@
             <IE>123456789</IE>
         </enderEmit>
     </emit>
+    <autXML>
+        <CNPJ>12345678000195</CNPJ>
+        <CPF>12345678901</CPF>
+    </autXML>
     <det nItem="1">
         <prod>
             <cProd>7896235354499</cProd>
