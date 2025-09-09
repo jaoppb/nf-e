@@ -148,7 +148,7 @@ impl State {
         }
     }
 
-    pub(crate) fn acronym(&self) -> &str {
+    pub fn acronym(&self) -> &str {
         match self {
             State::Rondonia => "RO",
             State::Acre => "AC",
@@ -178,5 +178,9 @@ impl State {
             State::Goias => "GO",
             State::DistritoFederal => "DF",
         }
+    }
+
+    pub fn code(&self) -> u8 {
+        self.clone() as u8
     }
 }

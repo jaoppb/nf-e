@@ -1,11 +1,19 @@
 use crate::models::ICMSSN102;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
+use std::fmt::Display;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Model {
     NFe = 55,
     NFCe = 65,
+}
+
+impl Model {
+
+    pub fn code(&self) -> u8 {
+        self.clone() as u8
+    }
 }
 
 impl TryFrom<u8> for Model {
@@ -91,6 +99,12 @@ pub enum EmissionType {
     SVCAN = 6,
     SVCRS = 7,
     Offline = 9,
+}
+
+impl EmissionType {
+    pub fn code(&self) -> u8 {
+        self.clone() as u8
+    }
 }
 
 impl TryFrom<u8> for EmissionType {
@@ -197,6 +211,16 @@ pub enum Document {
     CNPJ(CNPJ),
     CPF(CPF),
     IE(IE),
+}
+
+impl Document {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Document::CNPJ(cnpj) => &cnpj.0,
+            Document::CPF(cpf) => &cpf.0,
+            Document::IE(ie) => &ie.0,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

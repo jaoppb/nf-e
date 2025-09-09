@@ -1,7 +1,9 @@
 use crate::enums::*;
 
 use crate::states::{City, Location, State};
+use crate::utils::left_pad;
 use crate::LIBRARY_VERSION;
+use chrono::Datelike;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -13,6 +15,8 @@ pub struct Authorized {
 
 /// Main structure based on the XML structure of the NFe
 ///
+/// The fields are public but use the `Info::new` method to create the structure.
+///
 /// id: Identifier of the NFe (id) - Format "NFe{chave}"
 /// identification: Identification structure (ide)
 /// issuer: Issuer structure (emit)
@@ -20,11 +24,73 @@ pub struct Authorized {
 /// version: Fixed value "4.00" (@versao)
 #[derive(Debug, PartialEq)]
 pub struct Info {
-    pub id: String,
     pub identification: Identification,
     pub issuer: Issuer,
     pub details: Vec<Detail>,
     pub authorized: Option<Authorized>,
+}
+
+impl Info {
+    pub fn version(&self) -> String {
+        "4.00".to_string()
+    }
+
+    fn verifier_digit(&self, id: &str) -> u8 {
+        let mut weight = 4;
+        let remainder = id.chars().fold(0, |acc, d| {
+            let d = d.to_digit(10).expect("failed to parse digit");
+            let result = d * weight;
+            weight = if weight <= 2 { 9 } else { weight - 1 };
+            acc + result
+        }) % 11;
+        if remainder > 1 {
+            11 - remainder as u8
+        } else {
+            0
+        }
+    }
+
+    pub fn bare_id(&self) -> String {
+        let mut id = String::new();
+        id.push_str(&self.identification.location.state.code().to_string());
+        id.push_str(&self.identification.emission_date.year().to_string()[2..]);
+        id.push_str(&self.identification.emission_date.month().to_string());
+        id.push_str(left_pad(self.issuer.document.as_str(), 14, '0').as_str());
+        id.push_str(&self.identification.model.code().to_string());
+        id.push_str(left_pad(&self.identification.series.to_string(), 3, '0').as_str());
+        id.push_str(left_pad(&self.identification.number.to_string(), 9, '0').as_str());
+        id.push_str(&self.identification.emission_type.code().to_string());
+        id.push_str(left_pad(&self.identification.numeric_code.to_string(), 8, '0').as_str());
+        id
+    }
+
+    /// Generates the NFe key (chave) based on the identification and issuer information
+    /// The key is composed of:
+    /// - State code (cUF) - 2 digits
+    /// - Year and month of emission (AA/MM) - 4 digits
+    /// - CNPJ of the issuer - 14 digits (left-padded with zeros)
+    /// - Model of the NFe (mod) - 2 digits
+    /// - Series of the NFe (serie) - 3 digits (left-padded with zeros)
+    /// - Number of the NFe (nNF) - 9 digits (left-padded with zeros)
+    /// - Type of emission (tpEmis) - 1 digit
+    /// - Numeric code (cNF) - 8 digits (left-padded with zeros)
+    /// - Verifier digit (cDV) - 1 digit (calculated using a modulus 11 algorithm)
+    /// Returns the complete key in the format "NFe{chave}"
+    pub fn id(&self) -> String {
+        let id = self.bare_id();
+        format!("NFe{}{}", id, self.verifier_digit(&id))
+    }
+
+    pub fn new(identification: Identification, issuer: Issuer) -> Self {
+        let mut info = Self {
+            identification,
+            issuer,
+            details: Vec::new(),
+            authorized: None,
+        };
+        info.identification.verifier_digit = info.verifier_digit(&info.bare_id());
+        info
+    }
 }
 
 impl Serialize for Info {
@@ -44,7 +110,7 @@ impl Serialize for Info {
 
         let mut state = serializer.serialize_struct("infNFe", len)?;
         state.serialize_field("@versao", &self.version())?;
-        state.serialize_field("@id", &self.id)?;
+        state.serialize_field("@id", &self.id())?;
         state.serialize_field("ide", &self.identification)?;
         state.serialize_field("emit", &self.issuer)?;
         state.serialize_field("autXML", &self.authorized)?;
@@ -94,19 +160,21 @@ impl<'de> Deserialize<'de> for Info {
             )));
         }
 
-        Ok(Info {
-            id: helper.id,
+        let info = Info {
             identification: helper.identification,
             issuer: helper.issuer,
             details: helper.details,
             authorized: helper.authorized,
-        })
-    }
-}
+        };
+        if info.id() != helper.id {
+            return Err(serde::de::Error::custom(format!(
+                "ID mismatch: expected {}, found {}",
+                info.id(),
+                helper.id
+            )));
+        }
 
-impl Info {
-    pub fn version(&self) -> String {
-        "4.00".to_string()
+        Ok(info)
     }
 }
 
@@ -826,13 +894,10 @@ mod tests {
     }
 
     fn setup_info() -> Info {
-        Info {
-            id: "NFe12345678901234567890123456789012345678901234".to_string(),
-            identification: setup_identification(),
-            issuer: setup_issuer(),
-            details: vec![setup_detail(), setup_detail()],
-            authorized: Some(setup_authorized()),
-        }
+        let mut info = Info::new(setup_identification(), setup_issuer());
+        info.details = vec![setup_detail(), setup_detail()];
+        info.authorized = Some(setup_authorized());
+        info
     }
 
     #[test]
@@ -980,7 +1045,8 @@ mod tests {
     #[test]
     fn serialize_authorized() {
         let authorized = setup_authorized();
-        let serialized = quick_xml::se::to_string(&authorized).expect("Failed to serialize authorized");
+        let serialized =
+            quick_xml::se::to_string(&authorized).expect("Failed to serialize authorized");
         let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
         assert_eq!(
             canonicalized,

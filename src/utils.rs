@@ -1,4 +1,4 @@
-use quick_xml::{Reader, Writer, events::Event};
+use quick_xml::{events::Event, Reader, Writer};
 use std::{error::Error, io::Cursor};
 use xml_canonicalization::Canonicalizer;
 
@@ -38,6 +38,15 @@ pub fn canonicalize_xml(input: &str) -> Result<String, Box<dyn Error>> {
         .write_to_writer(Cursor::new(&mut result))
         .canonicalize(false)?;
     String::from_utf8(result).map_err(|e| e.into())
+}
+
+pub fn left_pad(input: &str, total_length: usize, pad_char: char) -> String {
+    if input.len() >= total_length {
+        input.to_string()
+    } else {
+        let padding = pad_char.to_string().repeat(total_length - input.len());
+        format!("{}{}", padding, input)
+    }
 }
 
 #[cfg(test)]
