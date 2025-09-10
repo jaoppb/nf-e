@@ -1097,11 +1097,12 @@ mod tests {
         InfoBuilder::new(setup_identification(), setup_issuer())
             .add_detail(setup_detail())
             .add_detail(setup_detail())
-            .set_authorized(setup_authorized())
     }
 
     fn setup_info() -> Info {
-        setup_info_builder().build()
+        setup_info_builder()
+            .set_authorized(setup_authorized())
+            .build()
     }
 
     #[test]
@@ -1112,6 +1113,20 @@ mod tests {
         assert_eq!(
             canonicalized,
             canonicalize_xml(include_str!("../tests/fixtures/info.xml")).unwrap()
+        );
+    }
+
+    #[test]
+    fn serialize_info_without_authorized() {
+        let info = setup_info_builder().build();
+        let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!(
+                "../tests/fixtures/info_without_authorized.xml"
+            ))
+            .unwrap()
         );
     }
 

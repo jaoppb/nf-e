@@ -1,0 +1,121 @@
+<infNFe id="NFe31231012345678000195650010000123451123456783" versao="4.00">
+    <ide>
+        <cUF>31</cUF>
+        <cNF>12345678</cNF>
+        <natOp>Venda de mercadoria</natOp>
+        <mod>65</mod>
+        <serie>1</serie>
+        <nNF>12345</nNF>
+        <dhEmi>2023-10-05T14:30:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+        <idDest>1</idDest>
+        <cMunFG>3106200</cMunFG>
+        <xMun>Belo Horizonte</xMun>
+        <tpImp>4</tpImp>
+        <tpEmis>1</tpEmis>
+        <cDV>3</cDV>
+        <tpAmb>1</tpAmb>
+        <finNFe>1</finNFe>
+        <indFinal>1</indFinal>
+        <indPres>1</indPres>
+        <procEmi>0</procEmi>
+        <verProc>0.1.0</verProc>
+    </ide>
+    <emit>
+        <CNPJ>12345678000195</CNPJ>
+        <xNome>Empresa Exemplo LTDA</xNome>
+        <xFant>Empresa Exemplo</xFant>
+        <enderEmit>
+            <xLgr>Rua Exemplo</xLgr>
+            <xCpl>Loja 1</xCpl>
+            <nro>123</nro>
+            <xBairro>Centro</xBairro>
+            <cMun>3106200</cMun>
+            <xMun>Belo Horizonte</xMun>
+            <UF>MG</UF>
+            <CEP>01001000</CEP>
+            <fone>3132123456</fone>
+            <xPais>Brasil</xPais>
+            <cPais>1058</cPais>
+            <IE>123456789</IE>
+        </enderEmit>
+    </emit>
+    <total>
+        <ICMSTot>
+            <vBC>0.00</vBC>
+            <vICMS>0.00</vICMS>
+            <vICMSDeson>0.00</vICMSDeson>
+            <vFCP>0.00</vFCP>
+            <vBCST>0.00</vBCST>
+            <vST>0.00</vST>
+            <vFCPST>0.00</vFCPST>
+            <vFCPSTRet>0.00</vFCPSTRet>
+            <vProd>113.94</vProd>
+            <vFrete>0.00</vFrete>
+            <vSeg>0.00</vSeg>
+            <vDesc>0.00</vDesc>
+            <vII>0.00</vII>
+            <vIPI>0.00</vIPI>
+            <vIPIDevol>0.00</vIPIDevol>
+            <vPIS>0.00</vPIS>
+            <vCOFINS>0.00</vCOFINS>
+            <vOutro>0.00</vOutro>
+            <vNF>113.94</vNF>
+        </ICMSTot>
+    </total>
+    <transp>
+        <modFrete>9</modFrete>
+    </transp>
+    <det nItem="1">
+        <prod>
+            <cProd>7896235354499</cProd>
+            <cEAN>7896235354499</cEAN>
+            <xProd>desodorante aerosol monange 200ML</xProd>
+            <NCM>33072010</NCM>
+            <CFOP>5403</CFOP>
+            <uCom>UN</uCom>
+            <qCom>3.0000</qCom>
+            <vUnCom>18.99</vUnCom>
+            <vProd>56.97</vProd>
+            <cEANTrib>7896235354499</cEANTrib>
+            <uTrib>UN</uTrib>
+            <qTrib>3.0000</qTrib>
+            <vUnTrib>18.99</vUnTrib>
+            <indTot>1</indTot>
+        </prod>
+        <imposto>
+            <ICMS>
+                <ICMSSN102>
+                    <orig>0</orig>
+                    <CSOSN>102</CSOSN>
+                </ICMSSN102>
+            </ICMS>
+        </imposto>
+    </det>
+    <det nItem="2">
+        <prod>
+            <cProd>7896235354499</cProd>
+            <cEAN>7896235354499</cEAN>
+            <xProd>desodorante aerosol monange 200ML</xProd>
+            <NCM>33072010</NCM>
+            <CFOP>5403</CFOP>
+            <uCom>UN</uCom>
+            <qCom>3.0000</qCom>
+            <vUnCom>18.99</vUnCom>
+            <vProd>56.97</vProd>
+            <cEANTrib>7896235354499</cEANTrib>
+            <uTrib>UN</uTrib>
+            <qTrib>3.0000</qTrib>
+            <vUnTrib>18.99</vUnTrib>
+            <indTot>1</indTot>
+        </prod>
+        <imposto>
+            <ICMS>
+                <ICMSSN102>
+                    <orig>0</orig>
+                    <CSOSN>102</CSOSN>
+                </ICMSSN102>
+            </ICMS>
+        </imposto>
+    </det>
+</infNFe>
