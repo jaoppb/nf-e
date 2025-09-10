@@ -44,6 +44,29 @@
         <CNPJ>12345678000195</CNPJ>
         <CPF>12345678901</CPF>
     </autXML>
+    <total>
+        <ICMSTot>
+            <vBC>0.00</vBC>
+            <vICMS>0.00</vICMS>
+            <vICMSDeson>0.00</vICMSDeson>
+            <vFCP>0.00</vFCP>
+            <vBCST>0.00</vBCST>
+            <vST>0.00</vST>
+            <vFCPST>0.00</vFCPST>
+            <vFCPSTRet>0.00</vFCPSTRet>
+            <vProd>113.94</vProd>
+            <vFrete>0.00</vFrete>
+            <vSeg>0.00</vSeg>
+            <vDesc>0.00</vDesc>
+            <vII>0.00</vII>
+            <vIPI>0.00</vIPI>
+            <vIPIDevol>0.00</vIPIDevol>
+            <vPIS>0.00</vPIS>
+            <vCOFINS>0.00</vCOFINS>
+            <vOutro>0.00</vOutro>
+            <vNF>113.94</vNF>
+        </ICMSTot>
+    </total>
     <det nItem="1">
         <prod>
             <cProd>7896235354499</cProd>

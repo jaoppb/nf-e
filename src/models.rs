@@ -6,6 +6,18 @@ use crate::LIBRARY_VERSION;
 use chrono::Datelike;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
+#[derive(Deserialize, Debug, PartialEq)]
+pub struct F64(pub f64);
+
+impl Serialize for F64 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{:.2}", self.0))
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename = "autXML")]
 pub struct Authorized {
@@ -15,7 +27,7 @@ pub struct Authorized {
 
 /// Main structure based on the XML structure of the NFe
 ///
-/// The fields are public but use the `Info::new` method to create the structure.
+/// The fields are public but use the `InfoBuilder` to create the structure.
 ///
 /// id: Identifier of the NFe (id) - Format "NFe{chave}"
 /// identification: Identification structure (ide)
@@ -28,6 +40,7 @@ pub struct Info {
     pub issuer: Issuer,
     pub details: Vec<Detail>,
     pub authorized: Option<Authorized>,
+    pub total: Total,
 }
 
 impl Info {
@@ -61,6 +74,7 @@ impl Info {
         id.push_str(left_pad(&self.identification.number.to_string(), 9, '0').as_str());
         id.push_str(&self.identification.emission_type.code().to_string());
         id.push_str(left_pad(&self.identification.numeric_code.to_string(), 8, '0').as_str());
+        assert_eq!(id.len(), 43);
         id
     }
 
@@ -80,13 +94,43 @@ impl Info {
         let id = self.bare_id();
         format!("NFe{}{}", id, self.verifier_digit(&id))
     }
+}
 
-    pub fn new(identification: Identification, issuer: Issuer) -> Self {
-        let mut info = Self {
+pub struct InfoBuilder {
+    identification: Identification,
+    issuer: Issuer,
+    details: Vec<Detail>,
+    authorized: Option<Authorized>,
+}
+
+impl InfoBuilder {
+    fn new(identification: Identification, issuer: Issuer) -> Self {
+        Self {
             identification,
             issuer,
             details: Vec::new(),
             authorized: None,
+        }
+    }
+
+    pub fn add_detail(mut self, detail: Detail) -> Self {
+        self.details.push(detail);
+        self
+    }
+
+    pub fn set_authorized(mut self, authorized: Authorized) -> Self {
+        self.authorized = Some(authorized);
+        self
+    }
+
+    pub fn build(self) -> Info {
+        let total = Total::calculate(&self);
+        let mut info = Info {
+            identification: self.identification,
+            issuer: self.issuer,
+            details: self.details,
+            authorized: self.authorized,
+            total,
         };
         info.identification.verifier_digit = info.verifier_digit(&info.bare_id());
         info
@@ -106,14 +150,17 @@ impl Serialize for Info {
             index: usize,
         }
 
-        let len = 5 + self.authorized.is_some() as usize;
+        let len = 6 + self.authorized.is_some() as usize;
 
         let mut state = serializer.serialize_struct("infNFe", len)?;
         state.serialize_field("@versao", &self.version())?;
         state.serialize_field("@id", &self.id())?;
         state.serialize_field("ide", &self.identification)?;
         state.serialize_field("emit", &self.issuer)?;
-        state.serialize_field("autXML", &self.authorized)?;
+        if self.authorized.is_some() {
+            state.serialize_field("autXML", &self.authorized)?;
+        }
+        state.serialize_field("total", &self.total)?;
         state.serialize_field(
             "det",
             &self
@@ -149,6 +196,7 @@ impl<'de> Deserialize<'de> for Info {
             details: Vec<Detail>,
             #[serde(rename = "autXML")]
             authorized: Option<Authorized>,
+            total: Total,
         }
 
         let helper = InfoHelper::deserialize(deserializer)?;
@@ -165,6 +213,7 @@ impl<'de> Deserialize<'de> for Info {
             issuer: helper.issuer,
             details: helper.details,
             authorized: helper.authorized,
+            total: helper.total,
         };
         if info.id() != helper.id {
             return Err(serde::de::Error::custom(format!(
@@ -175,6 +224,110 @@ impl<'de> Deserialize<'de> for Info {
         }
 
         Ok(info)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename = "total")]
+pub struct Total {
+    #[serde(rename = "ICMSTot")]
+    pub icms: TotalICMS,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct TotalICMS {
+    #[serde(rename = "vBC")]
+    pub base: F64,
+    #[serde(rename = "vICMS")]
+    pub value: F64,
+    #[serde(rename = "vICMSDeson")]
+    pub unburdened: F64,
+    #[serde(rename = "vFCP")]
+    pub fcp_value: F64,
+    #[serde(rename = "vBCST")]
+    pub base_tributary_substitution: F64,
+    #[serde(rename = "vST")]
+    pub total_tributary_substitution: F64,
+    #[serde(rename = "vFCPST")]
+    pub fcp_value_tributary_substitution: F64,
+    #[serde(rename = "vFCPSTRet")]
+    pub retained_fcp_value_tributary_substitution: F64,
+    #[serde(rename = "vProd")]
+    pub total_products: F64,
+    #[serde(rename = "vFrete")]
+    pub freight: F64,
+    #[serde(rename = "vSeg")]
+    pub insurance: F64,
+    #[serde(rename = "vDesc")]
+    pub discount: F64,
+    #[serde(rename = "vII")]
+    pub import_tax: F64,
+    #[serde(rename = "vIPI")]
+    pub industrial_tax: F64,
+    #[serde(rename = "vIPIDevol")]
+    pub refunded_industrial_tax: F64,
+    #[serde(rename = "vPIS")]
+    pub pis_value: F64,
+    #[serde(rename = "vCOFINS")]
+    pub cofins_value: F64,
+    #[serde(rename = "vOutro")]
+    pub other: F64,
+    #[serde(rename = "vNF")]
+    pub total: F64,
+}
+
+impl Total {
+    pub(crate) fn calculate(builder: &InfoBuilder) -> Self {
+        let total_products = builder
+            .details
+            .iter()
+            .fold(0.0f64, |acc, d| acc + d.item.total_value);
+        let discount = builder
+            .details
+            .iter()
+            .fold(0.0f64, |acc, d| acc + d.item.discount_value.unwrap_or(0.0));
+        let unburdened = 0.0;
+        let freight = 0.0;
+        let insurance = 0.0;
+        let other = builder
+            .details
+            .iter()
+            .fold(0.0f64, |acc, d| acc + d.item.other_value.unwrap_or(0.0));
+        let import_tax = 0.0;
+        let industrial_tax = 0.0;
+        let refunded_industrial_tax = 0.0;
+
+        let total_value = total_products - discount - unburdened
+            + freight
+            + insurance
+            + other
+            + import_tax
+            + industrial_tax
+            + refunded_industrial_tax;
+
+        Total {
+            icms: TotalICMS {
+                base: F64(0.0),
+                value: F64(0.0),
+                unburdened: F64(unburdened),
+                fcp_value: F64(0.0),
+                base_tributary_substitution: F64(0.0),
+                total_tributary_substitution: F64(0.0),
+                fcp_value_tributary_substitution: F64(0.0),
+                retained_fcp_value_tributary_substitution: F64(0.0),
+                total_products: F64(total_products),
+                freight: F64(freight),
+                insurance: F64(insurance),
+                discount: F64(discount),
+                import_tax: F64(import_tax),
+                industrial_tax: F64(industrial_tax),
+                refunded_industrial_tax: F64(refunded_industrial_tax),
+                pis_value: F64(0.0),
+                cofins_value: F64(0.0),
+                other: F64(other),
+                total: F64(total_value),
+            },
+        }
     }
 }
 
@@ -893,11 +1046,15 @@ mod tests {
         assert_eq!(deserialized, setup_detail());
     }
 
+    fn setup_info_builder() -> InfoBuilder {
+        InfoBuilder::new(setup_identification(), setup_issuer())
+            .add_detail(setup_detail())
+            .add_detail(setup_detail())
+            .set_authorized(setup_authorized())
+    }
+
     fn setup_info() -> Info {
-        let mut info = Info::new(setup_identification(), setup_issuer());
-        info.details = vec![setup_detail(), setup_detail()];
-        info.authorized = Some(setup_authorized());
-        info
+        setup_info_builder().build()
     }
 
     #[test]
@@ -1059,5 +1216,27 @@ mod tests {
         let parsed = canonicalize_xml(include_str!("../tests/fixtures/authorized.xml")).unwrap();
         let deserialized: Authorized = quick_xml::de::from_str(&parsed).unwrap();
         assert_eq!(deserialized, setup_authorized());
+    }
+
+    fn setup_total() -> Total {
+        Total::calculate(&setup_info_builder())
+    }
+
+    #[test]
+    fn serialize_total() {
+        let total = setup_total();
+        let serialized = quick_xml::se::to_string(&total).expect("Failed to serialize total");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../tests/fixtures/total.xml")).unwrap()
+        );
+    }
+
+    #[test]
+    fn deserialize_total() {
+        let parsed = canonicalize_xml(include_str!("../tests/fixtures/total.xml")).unwrap();
+        let deserialized: Total = quick_xml::de::from_str(&parsed).unwrap();
+        assert_eq!(deserialized, setup_total());
     }
 }

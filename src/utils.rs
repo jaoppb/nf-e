@@ -63,4 +63,19 @@ mod test {
             Err(e) => panic!("Error during canonicalization: {}", e),
         }
     }
+    
+    #[test]
+    fn test_left_pad() {
+        let input = "123";
+        let padded = left_pad(input, 5, '0');
+        assert_eq!(padded, "00123");
+
+        let input2 = "12345";
+        let padded2 = left_pad(input2, 5, '0');
+        assert_eq!(padded2, "12345");
+
+        let input3 = "123456";
+        let padded3 = left_pad(input3, 5, '0');
+        assert_eq!(padded3, "123456");
+    }
 }
