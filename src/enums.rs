@@ -1,7 +1,38 @@
 use crate::models::ICMSSN102;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
-use std::fmt::Display;
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub enum TransportType {
+    CIF = 0,
+    FOB = 1,
+    ThirdParty = 2,
+    Issuer = 3,
+    Recipient = 4,
+    None = 9,
+}
+
+impl Default for TransportType {
+    fn default() -> Self {
+        TransportType::None
+    }
+}
+
+impl TryFrom<u8> for TransportType {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(TransportType::CIF),
+            1 => Ok(TransportType::FOB),
+            2 => Ok(TransportType::ThirdParty),
+            3 => Ok(TransportType::Issuer),
+            4 => Ok(TransportType::Recipient),
+            9 => Ok(TransportType::None),
+            _ => Err(format!("Invalid transport type value: {}", value)),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Model {
@@ -10,7 +41,6 @@ pub enum Model {
 }
 
 impl Model {
-
     pub fn code(&self) -> u8 {
         self.clone() as u8
     }
@@ -372,10 +402,7 @@ mod test {
     fn deserialize_cpf() {
         let xml = "<CPF>12345678901</CPF>";
         let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
-        assert_eq!(
-            deserialized,
-            Document::CPF(CPF("12345678901".to_string()))
-        );
+        assert_eq!(deserialized, Document::CPF(CPF("12345678901".to_string())));
     }
 
     #[test]
@@ -389,10 +416,7 @@ mod test {
     fn deserialize_ie() {
         let xml = "<IE>123456789</IE>";
         let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
-        assert_eq!(
-            deserialized,
-            Document::IE(IE("123456789".to_string()))
-        );
+        assert_eq!(deserialized, Document::IE(IE("123456789".to_string())));
     }
 
     #[test]

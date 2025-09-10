@@ -4,7 +4,7 @@ use crate::states::{City, Location, State};
 use crate::utils::left_pad;
 use crate::LIBRARY_VERSION;
 use chrono::Datelike;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 
 #[derive(Deserialize, Debug, PartialEq)]
 pub struct F64(pub f64);
@@ -25,6 +25,40 @@ pub struct Authorized {
     pub documents: Vec<PersonDocument>,
 }
 
+#[derive(Default, PartialEq, Debug)]
+pub struct Transport {
+    pub r#type: TransportType,
+}
+
+impl Serialize for Transport {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("transp", 1)?;
+        state.serialize_field("modFrete", &(self.r#type.clone() as u8))?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Transport {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct TransportHelper {
+            #[serde(rename = "modFrete")]
+            mod_frete: u8,
+        }
+
+        let helper = TransportHelper::deserialize(deserializer)?;
+        let r#type = TransportType::try_from(helper.mod_frete).map_err(serde::de::Error::custom)?;
+
+        Ok(Transport { r#type })
+    }
+}
+
 /// Main structure based on the XML structure of the NFe
 ///
 /// The fields are public but use the `InfoBuilder` to create the structure.
@@ -41,6 +75,7 @@ pub struct Info {
     pub details: Vec<Detail>,
     pub authorized: Option<Authorized>,
     pub total: Total,
+    pub transport: Transport,
 }
 
 impl Info {
@@ -101,6 +136,7 @@ pub struct InfoBuilder {
     issuer: Issuer,
     details: Vec<Detail>,
     authorized: Option<Authorized>,
+    transport: Option<Transport>,
 }
 
 impl InfoBuilder {
@@ -110,6 +146,7 @@ impl InfoBuilder {
             issuer,
             details: Vec::new(),
             authorized: None,
+            transport: None,
         }
     }
 
@@ -123,6 +160,11 @@ impl InfoBuilder {
         self
     }
 
+    pub fn set_transport(mut self, transport: Transport) -> Self {
+        self.transport = Some(transport);
+        self
+    }
+
     pub fn build(self) -> Info {
         let total = Total::calculate(&self);
         let mut info = Info {
@@ -131,6 +173,7 @@ impl InfoBuilder {
             details: self.details,
             authorized: self.authorized,
             total,
+            transport: self.transport.unwrap_or(Transport::default()),
         };
         info.identification.verifier_digit = info.verifier_digit(&info.bare_id());
         info
@@ -161,6 +204,7 @@ impl Serialize for Info {
             state.serialize_field("autXML", &self.authorized)?;
         }
         state.serialize_field("total", &self.total)?;
+        state.serialize_field("transp", &self.transport)?;
         state.serialize_field(
             "det",
             &self
@@ -197,6 +241,8 @@ impl<'de> Deserialize<'de> for Info {
             #[serde(rename = "autXML")]
             authorized: Option<Authorized>,
             total: Total,
+            #[serde(rename = "transp")]
+            transport: Transport,
         }
 
         let helper = InfoHelper::deserialize(deserializer)?;
@@ -214,6 +260,7 @@ impl<'de> Deserialize<'de> for Info {
             details: helper.details,
             authorized: helper.authorized,
             total: helper.total,
+            transport: helper.transport,
         };
         if info.id() != helper.id {
             return Err(serde::de::Error::custom(format!(
@@ -1238,5 +1285,28 @@ mod tests {
         let parsed = canonicalize_xml(include_str!("../tests/fixtures/total.xml")).unwrap();
         let deserialized: Total = quick_xml::de::from_str(&parsed).unwrap();
         assert_eq!(deserialized, setup_total());
+    }
+
+    fn setup_transport() -> Transport {
+        Transport::default()
+    }
+
+    #[test]
+    fn serialize_transport() {
+        let transport = setup_transport();
+        let serialized =
+            quick_xml::se::to_string(&transport).expect("Failed to serialize transport");
+        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        assert_eq!(
+            canonicalized,
+            canonicalize_xml(include_str!("../tests/fixtures/transport.xml")).unwrap()
+        );
+    }
+
+    #[test]
+    fn deserialize_transport() {
+        let parsed = canonicalize_xml(include_str!("../tests/fixtures/transport.xml")).unwrap();
+        let deserialized: Transport = quick_xml::de::from_str(&parsed).unwrap();
+        assert_eq!(deserialized, setup_transport());
     }
 }

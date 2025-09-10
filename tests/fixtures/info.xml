@@ -67,6 +67,9 @@
             <vNF>113.94</vNF>
         </ICMSTot>
     </total>
+    <transp>
+        <modFrete>9</modFrete>
+    </transp>
     <det nItem="1">
         <prod>
             <cProd>7896235354499</cProd>
