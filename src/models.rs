@@ -986,42 +986,25 @@ pub struct Detail {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::canonicalize_xml;
+    use crate::utils::canonicalize_xml as canonicalize;
+    use quick_xml::{
+        se::to_string as serialize,
+        de::from_str as deserialize,
+    };
     use chrono::TimeZone;
+    use nf_e_macros::serialization_test;
 
-    #[test]
-    fn serialize_tax() {
-        let tax = Tax {
+    #[serialization_test(fixture = "../tests/fixtures/tax.xml")]
+    fn setup_tax() -> Tax {
+        Tax {
             icms: ICMS::ICMSSN102(ICMSSN102 {
                 origin: Origin::National,
                 csosn: CSOSN::FinalConsumer,
             }),
-        };
-        let serialized = quick_xml::se::to_string(&tax);
-
-        match serialized {
-            Ok(xml) => assert_eq!(
-                canonicalize_xml(&xml).unwrap(),
-                canonicalize_xml(include_str!("../tests/fixtures/tax.xml")).unwrap()
-            ),
-            Err(e) => panic!("Failed to serialize Tax {}", e.to_string()),
         }
     }
 
-    #[test]
-    fn deserialize_tax() {
-        let xml = canonicalize_xml(include_str!("../tests/fixtures/tax.xml")).unwrap();
-        let deserialized: Tax = quick_xml::de::from_str(&xml).unwrap();
-
-        assert_eq!(
-            deserialized.icms,
-            ICMS::ICMSSN102(ICMSSN102 {
-                origin: Origin::National,
-                csosn: CSOSN::FinalConsumer,
-            })
-        );
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/item.xml")]
     fn setup_item() -> Item {
         Item {
             cfop: 5403,
@@ -1041,26 +1024,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn serialize_item() {
-        let item = setup_item();
-        let serialized = quick_xml::se::to_string(&item).expect("Failed to serialize item");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/item.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_item() {
-        let item = canonicalize_xml(include_str!("../tests/fixtures/item.xml")).unwrap();
-        let deserialized: Item =
-            quick_xml::de::from_str(&item).expect("Failed to deserialize item");
-
-        assert_eq!(deserialized, setup_item());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/detail.xml")]
     fn setup_detail() -> Detail {
         Detail {
             tax: Tax {
@@ -1073,32 +1037,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn serialize_detail() {
-        let detail = setup_detail();
-        let serialized = quick_xml::se::to_string(&detail).expect("Failed to serialize detail");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to serialize detail");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/detail.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_detail() {
-        let detail = canonicalize_xml(include_str!("../tests/fixtures/detail.xml")).unwrap();
-        let deserialized: Detail =
-            quick_xml::de::from_str(&detail).expect("Failed to deserialize detail");
-
-        assert_eq!(deserialized, setup_detail());
-    }
-
     fn setup_info_builder() -> InfoBuilder {
         InfoBuilder::new(setup_identification(), setup_issuer())
             .add_detail(setup_detail())
             .add_detail(setup_detail())
     }
 
+    #[serialization_test(fixture = "../tests/fixtures/info_authorized.xml")]
     fn setup_info() -> Info {
         setup_info_builder()
             .set_authorized(setup_authorized())
@@ -1106,38 +1051,17 @@ mod tests {
     }
 
     #[test]
-    fn serialize_info() {
-        let info = setup_info();
-        let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/info.xml")).unwrap()
-        );
-    }
-
-    #[test]
     fn serialize_info_without_authorized() {
         let info = setup_info_builder().build();
         let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
+        let canonicalized = canonicalize(&serialized).expect("Failed to canonicalize XML");
         assert_eq!(
             canonicalized,
-            canonicalize_xml(include_str!(
-                "../tests/fixtures/info_without_authorized.xml"
-            ))
-            .unwrap()
+            canonicalize(include_str!("../tests/fixtures/info.xml")).unwrap()
         );
     }
 
-    #[test]
-    fn deserialize_info() {
-        let info = canonicalize_xml(include_str!("../tests/fixtures/info.xml")).unwrap();
-        let deserialized: Info = quick_xml::de::from_str(&info).unwrap();
-
-        assert_eq!(deserialized, setup_info());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/identification.xml")]
     fn setup_identification() -> Identification {
         Identification {
             location: Location {
@@ -1169,25 +1093,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn serialize_identification() {
-        let serialized = quick_xml::se::to_string(&setup_identification())
-            .expect("Failed to serialize identification");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/identification.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_identification() {
-        let parsed =
-            canonicalize_xml(include_str!("../tests/fixtures/identification.xml")).unwrap();
-        let deserialized: Identification = quick_xml::de::from_str(&parsed).unwrap();
-        assert_eq!(deserialized, setup_identification());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/address.xml")]
     fn setup_address() -> Address {
         Address {
             line_1: "Rua Exemplo".to_string(),
@@ -1204,24 +1110,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn serialize_address() {
-        let address = setup_address();
-        let serialized = quick_xml::se::to_string(&address).expect("Failed to serialize address");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/address.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_address() {
-        let parsed = canonicalize_xml(include_str!("../tests/fixtures/address.xml")).unwrap();
-        let deserialized: Address = quick_xml::de::from_str(&parsed).unwrap();
-        assert_eq!(deserialized, setup_address());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/issuer.xml")]
     fn setup_issuer() -> Issuer {
         Issuer {
             document: Document::CNPJ(CNPJ("12345678000195".to_string())),
@@ -1234,24 +1123,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn serialize_issuer() {
-        let issuer = setup_issuer();
-        let serialized = quick_xml::se::to_string(&issuer).expect("Failed to serialize issuer");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/issuer.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_issuer() {
-        let parsed = canonicalize_xml(include_str!("../tests/fixtures/issuer.xml")).unwrap();
-        let deserialized: Issuer = quick_xml::de::from_str(&parsed).unwrap();
-        assert_eq!(deserialized, setup_issuer());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/authorized.xml")]
     fn setup_authorized() -> Authorized {
         Authorized {
             documents: vec![
@@ -1261,67 +1133,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn serialize_authorized() {
-        let authorized = setup_authorized();
-        let serialized =
-            quick_xml::se::to_string(&authorized).expect("Failed to serialize authorized");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/authorized.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_authorized() {
-        let parsed = canonicalize_xml(include_str!("../tests/fixtures/authorized.xml")).unwrap();
-        let deserialized: Authorized = quick_xml::de::from_str(&parsed).unwrap();
-        assert_eq!(deserialized, setup_authorized());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/total.xml")]
     fn setup_total() -> Total {
         Total::calculate(&setup_info_builder())
     }
 
-    #[test]
-    fn serialize_total() {
-        let total = setup_total();
-        let serialized = quick_xml::se::to_string(&total).expect("Failed to serialize total");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/total.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_total() {
-        let parsed = canonicalize_xml(include_str!("../tests/fixtures/total.xml")).unwrap();
-        let deserialized: Total = quick_xml::de::from_str(&parsed).unwrap();
-        assert_eq!(deserialized, setup_total());
-    }
-
+    #[serialization_test(fixture = "../tests/fixtures/transport.xml")]
     fn setup_transport() -> Transport {
         Transport::default()
-    }
-
-    #[test]
-    fn serialize_transport() {
-        let transport = setup_transport();
-        let serialized =
-            quick_xml::se::to_string(&transport).expect("Failed to serialize transport");
-        let canonicalized = canonicalize_xml(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize_xml(include_str!("../tests/fixtures/transport.xml")).unwrap()
-        );
-    }
-
-    #[test]
-    fn deserialize_transport() {
-        let parsed = canonicalize_xml(include_str!("../tests/fixtures/transport.xml")).unwrap();
-        let deserialized: Transport = quick_xml::de::from_str(&parsed).unwrap();
-        assert_eq!(deserialized, setup_transport());
     }
 }

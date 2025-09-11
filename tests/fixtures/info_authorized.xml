@@ -40,6 +40,10 @@
             <IE>123456789</IE>
         </enderEmit>
     </emit>
+    <autXML>
+        <CNPJ>12345678000195</CNPJ>
+        <CPF>12345678901</CPF>
+    </autXML>
     <total>
         <ICMSTot>
             <vBC>0.00</vBC>

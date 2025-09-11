@@ -370,76 +370,35 @@ impl From<Origin> for u8 {
 
 #[cfg(test)]
 mod test {
-    use crate::utils::canonicalize_xml;
+    use crate::utils::canonicalize_xml as canonicalize;
+    use quick_xml::{
+        se::to_string as serialize,
+        de::from_str as deserialize,
+    };
+    use nf_e_macros::serialization_test;
 
     use super::*;
 
-    #[test]
-    fn serialize_cnpj() {
-        let cnpj = Document::CNPJ(CNPJ("12345678000195".to_string()));
-        let serialized = quick_xml::se::to_string(&cnpj).unwrap();
-        assert_eq!(serialized, "<CNPJ>12345678000195</CNPJ>");
+    #[serialization_test(expected = "<CNPJ>12345678000195</CNPJ>")]
+    fn setup_cnpj() -> CNPJ {
+        CNPJ("12345678000195".to_string())
     }
 
-    #[test]
-    fn deserialize_cnpj() {
-        let xml = "<CNPJ>12345678000195</CNPJ>";
-        let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
-        assert_eq!(
-            deserialized,
-            Document::CNPJ(CNPJ("12345678000195".to_string()))
-        );
+    #[serialization_test(expected = "<CPF>12345678901</CPF>")]
+    fn setup_cpf() -> CPF {
+        CPF("12345678901".to_string())
     }
 
-    #[test]
-    fn serialize_cpf() {
-        let cpf = Document::CPF(CPF("12345678901".to_string()));
-        let serialized = quick_xml::se::to_string(&cpf).unwrap();
-        assert_eq!(serialized, "<CPF>12345678901</CPF>");
+    #[serialization_test(expected = "<IE>123456789</IE>")]
+    fn setup_ie() -> IE {
+        IE("123456789".to_string())
     }
 
-    #[test]
-    fn deserialize_cpf() {
-        let xml = "<CPF>12345678901</CPF>";
-        let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
-        assert_eq!(deserialized, Document::CPF(CPF("12345678901".to_string())));
-    }
-
-    #[test]
-    fn serialize_ie() {
-        let ie = Document::IE(IE("123456789".to_string()));
-        let serialized = quick_xml::se::to_string(&ie).unwrap();
-        assert_eq!(serialized, "<IE>123456789</IE>");
-    }
-
-    #[test]
-    fn deserialize_ie() {
-        let xml = "<IE>123456789</IE>";
-        let deserialized: Document = quick_xml::de::from_str(xml).unwrap();
-        assert_eq!(deserialized, Document::IE(IE("123456789".to_string())));
-    }
-
-    #[test]
-    fn serialize_icms() {
-        let icms = ICMS::ICMSSN102(ICMSSN102 {
+    #[serialization_test(fixture = "../tests/fixtures/enums/icms.xml")]
+    fn setup_icms() -> ICMS {
+        ICMS::ICMSSN102(ICMSSN102 {
             csosn: CSOSN::FinalConsumer,
             origin: Origin::National,
-        });
-        let serialized = quick_xml::se::to_string(&icms).unwrap();
-        let xml = canonicalize_xml(include_str!("../tests/fixtures/enums/icms.xml")).unwrap();
-        assert_eq!(serialized, xml);
-    }
-
-    #[test]
-    fn deserialize_icms() {
-        let xml = canonicalize_xml(include_str!("../tests/fixtures/enums/icms.xml")).unwrap();
-        let deserialized: ICMS = quick_xml::de::from_str(&xml).unwrap();
-        assert_eq!(
-            deserialized,
-            ICMS::ICMSSN102(ICMSSN102 {
-                csosn: CSOSN::FinalConsumer,
-                origin: Origin::National,
-            })
-        );
+        })
     }
 }
