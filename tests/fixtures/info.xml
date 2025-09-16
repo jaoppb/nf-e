@@ -63,6 +63,16 @@
             <vNF>113.94</vNF>
         </ICMSTot>
     </total>
+    <pag>
+        <detPag>
+            <tPag>01</tPag>
+            <vPag>40.00</vPag>
+        </detPag>
+        <detPag>
+            <tPag>03</tPag>
+            <vPag>73.94</vPag>
+        </detPag>
+    </pag>
     <transp>
         <modFrete>9</modFrete>
     </transp>

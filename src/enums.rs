@@ -1,4 +1,5 @@
 use crate::models::ICMSSN102;
+use crate::utils::left_pad;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -368,14 +369,79 @@ impl From<Origin> for u8 {
     }
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum PaymentType {
+    Cash = 1,
+    Check = 2,
+    CreditCard = 3,
+    DebitCard = 4,
+    ShopCredit = 5,
+    FoodVoucher = 6,
+    MealVoucher = 7,
+    GiftCard = 8,
+    GasVoucher = 9,
+    Boleto = 15,
+    BankDeposit = 16,
+    PIX = 17,
+    Transfer = 18,
+    Program = 19,
+}
+
+impl Serialize for PaymentType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        left_pad(&self.code().to_string(), 2, '0').serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PaymentType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        let value = s.parse::<u8>().map_err(serde::de::Error::custom)?;
+        PaymentType::try_from(value).map_err(serde::de::Error::custom)
+    }
+}
+
+impl TryFrom<u8> for PaymentType {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(PaymentType::Cash),
+            2 => Ok(PaymentType::Check),
+            3 => Ok(PaymentType::CreditCard),
+            4 => Ok(PaymentType::DebitCard),
+            5 => Ok(PaymentType::ShopCredit),
+            6 => Ok(PaymentType::FoodVoucher),
+            7 => Ok(PaymentType::MealVoucher),
+            8 => Ok(PaymentType::GiftCard),
+            9 => Ok(PaymentType::GasVoucher),
+            15 => Ok(PaymentType::Boleto),
+            16 => Ok(PaymentType::BankDeposit),
+            17 => Ok(PaymentType::PIX),
+            18 => Ok(PaymentType::Transfer),
+            19 => Ok(PaymentType::Program),
+            _ => Err(format!("Invalid payment type value: {}", value)),
+        }
+    }
+}
+
+impl PaymentType {
+    pub fn code(&self) -> u8 {
+        self.clone() as u8
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::utils::canonicalize_xml as canonicalize;
-    use quick_xml::{
-        se::to_string as serialize,
-        de::from_str as deserialize,
-    };
     use nf_e_macros::serialization_test;
+    use quick_xml::{de::from_str as deserialize, se::to_string as serialize};
 
     use super::*;
 

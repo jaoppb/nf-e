@@ -1,12 +1,12 @@
 use crate::enums::*;
 
+use crate::LIBRARY_VERSION;
 use crate::states::{City, Location, State};
 use crate::utils::left_pad;
-use crate::LIBRARY_VERSION;
 use chrono::Datelike;
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct F64(pub f64);
 
 impl Serialize for F64 {
@@ -15,6 +15,18 @@ impl Serialize for F64 {
         S: serde::Serializer,
     {
         serializer.serialize_str(&format!("{:.2}", self.0))
+    }
+}
+
+impl From<f64> for F64 {
+    fn from(value: f64) -> Self {
+        F64(value)
+    }
+}
+
+impl AsRef<f64> for F64 {
+    fn as_ref(&self) -> &f64 {
+        &self.0
     }
 }
 
@@ -76,6 +88,7 @@ pub struct Info {
     pub authorized: Option<Authorized>,
     pub total: Total,
     pub transport: Transport,
+    pub payments: Payments,
 }
 
 impl Info {
@@ -131,55 +144,6 @@ impl Info {
     }
 }
 
-pub struct InfoBuilder {
-    identification: Identification,
-    issuer: Issuer,
-    details: Vec<Detail>,
-    authorized: Option<Authorized>,
-    transport: Option<Transport>,
-}
-
-impl InfoBuilder {
-    fn new(identification: Identification, issuer: Issuer) -> Self {
-        Self {
-            identification,
-            issuer,
-            details: Vec::new(),
-            authorized: None,
-            transport: None,
-        }
-    }
-
-    pub fn add_detail(mut self, detail: Detail) -> Self {
-        self.details.push(detail);
-        self
-    }
-
-    pub fn set_authorized(mut self, authorized: Authorized) -> Self {
-        self.authorized = Some(authorized);
-        self
-    }
-
-    pub fn set_transport(mut self, transport: Transport) -> Self {
-        self.transport = Some(transport);
-        self
-    }
-
-    pub fn build(self) -> Info {
-        let total = Total::calculate(&self);
-        let mut info = Info {
-            identification: self.identification,
-            issuer: self.issuer,
-            details: self.details,
-            authorized: self.authorized,
-            total,
-            transport: self.transport.unwrap_or(Transport::default()),
-        };
-        info.identification.verifier_digit = info.verifier_digit(&info.bare_id());
-        info
-    }
-}
-
 impl Serialize for Info {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -204,6 +168,7 @@ impl Serialize for Info {
             state.serialize_field("autXML", &self.authorized)?;
         }
         state.serialize_field("total", &self.total)?;
+        state.serialize_field("pag", &self.payments)?;
         state.serialize_field("transp", &self.transport)?;
         state.serialize_field(
             "det",
@@ -243,6 +208,8 @@ impl<'de> Deserialize<'de> for Info {
             total: Total,
             #[serde(rename = "transp")]
             transport: Transport,
+            #[serde(rename = "pag")]
+            payments: Payments,
         }
 
         let helper = InfoHelper::deserialize(deserializer)?;
@@ -261,6 +228,7 @@ impl<'de> Deserialize<'de> for Info {
             authorized: helper.authorized,
             total: helper.total,
             transport: helper.transport,
+            payments: helper.payments,
         };
         if info.id() != helper.id {
             return Err(serde::de::Error::custom(format!(
@@ -272,6 +240,102 @@ impl<'de> Deserialize<'de> for Info {
 
         Ok(info)
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoNotMatchTotal {
+    expected: f64,
+    total: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InfoBuilderError {
+    PaymentsDoNotMatchTotal(DoNotMatchTotal),
+}
+
+pub struct InfoBuilder {
+    identification: Identification,
+    issuer: Issuer,
+    payments: Payments,
+    details: Vec<Detail>,
+    authorized: Option<Authorized>,
+    transport: Option<Transport>,
+}
+
+impl InfoBuilder {
+    fn new(identification: Identification, issuer: Issuer, payments: Payments) -> Self {
+        Self {
+            identification,
+            issuer,
+            payments,
+            details: Vec::new(),
+            authorized: None,
+            transport: None,
+        }
+    }
+
+    pub fn add_detail(mut self, detail: Detail) -> Self {
+        self.details.push(detail);
+        self
+    }
+
+    pub fn set_authorized(mut self, authorized: Authorized) -> Self {
+        self.authorized = Some(authorized);
+        self
+    }
+
+    pub fn set_transport(mut self, transport: Transport) -> Self {
+        self.transport = Some(transport);
+        self
+    }
+
+    fn check_paid(&self, total: &Total) -> Result<(), InfoBuilderError> {
+        let paid = self
+            .payments
+            .payments
+            .iter()
+            .fold(0.0f64, |acc, p| acc + p.value.as_ref());
+        let expected = total.icms.total.as_ref();
+        if (paid - expected).abs() < f64::EPSILON {
+            Ok(())
+        } else {
+            Err(InfoBuilderError::PaymentsDoNotMatchTotal(DoNotMatchTotal {
+                expected: *expected,
+                total: paid,
+            }))
+        }
+    }
+
+    pub fn build(self) -> Result<Info, InfoBuilderError> {
+        let total = Total::calculate(&self);
+        self.check_paid(&total)?;
+
+        let mut info = Info {
+            identification: self.identification,
+            issuer: self.issuer,
+            details: self.details,
+            authorized: self.authorized,
+            payments: self.payments,
+            total,
+            transport: self.transport.unwrap_or_default(),
+        };
+        info.identification.verifier_digit = info.verifier_digit(&info.bare_id());
+        Ok(info)
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub struct Payments {
+    #[serde(rename = "detPag")]
+    pub payments: Vec<Payment>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub struct Payment {
+    #[serde(rename = "tPag")]
+    pub r#type: PaymentType,
+    #[serde(rename = "vPag")]
+    pub value: F64,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -987,12 +1051,9 @@ pub struct Detail {
 mod tests {
     use super::*;
     use crate::utils::canonicalize_xml as canonicalize;
-    use quick_xml::{
-        se::to_string as serialize,
-        de::from_str as deserialize,
-    };
     use chrono::TimeZone;
     use nf_e_macros::serialization_test;
+    use quick_xml::{de::from_str as deserialize, se::to_string as serialize};
 
     #[serialization_test(fixture = "../tests/fixtures/tax.xml")]
     fn setup_tax() -> Tax {
@@ -1037,8 +1098,23 @@ mod tests {
         }
     }
 
+    fn setup_payments() -> Payments {
+        Payments {
+            payments: vec![
+                Payment {
+                    r#type: PaymentType::Cash,
+                    value: F64(40.00),
+                },
+                Payment {
+                    r#type: PaymentType::CreditCard,
+                    value: F64(73.94),
+                },
+            ],
+        }
+    }
+
     fn setup_info_builder() -> InfoBuilder {
-        InfoBuilder::new(setup_identification(), setup_issuer())
+        InfoBuilder::new(setup_identification(), setup_issuer(), setup_payments())
             .add_detail(setup_detail())
             .add_detail(setup_detail())
     }
@@ -1048,11 +1124,12 @@ mod tests {
         setup_info_builder()
             .set_authorized(setup_authorized())
             .build()
+            .expect("Failed to build Info")
     }
 
     #[test]
     fn serialize_info_without_authorized() {
-        let info = setup_info_builder().build();
+        let info = setup_info_builder().build().expect("Failed to build Info");
         let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
         let canonicalized = canonicalize(&serialized).expect("Failed to canonicalize XML");
         assert_eq!(
