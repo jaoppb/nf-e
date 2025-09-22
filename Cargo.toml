@@ -6,4 +6,12 @@ readme = "./README.md"
 license = "MIT"
 keywords = ["nfe", "nf-e", "nfce", "nfc-e"]
 
+[workspace]
+members = [".", "nf-e-macros"]
+
 [dependencies]
+chrono = { version = "0.4.41", features = ["serde"] }
+quick-xml = { version = "0.38.1", features = ["serialize"] }
+serde = { version = "1.0.219", features = ["derive"] }
+xml-canonicalization = "0.1.0"
+nf-e-macros = { path = "./nf-e-macros" }
