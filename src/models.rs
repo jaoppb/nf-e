@@ -4,7 +4,9 @@ use crate::LIBRARY_VERSION;
 use crate::states::{City, Location, State};
 use crate::utils::left_pad;
 use chrono::Datelike;
+use nf_e_macros::MethodAlgorithm;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
+use serde::ser::SerializeSeq;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct F64(pub f64);
@@ -69,6 +71,153 @@ impl<'de> Deserialize<'de> for Transport {
 
         Ok(Transport { r#type })
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct NFe {
+    pub info: Info,
+    pub signature: Signature,
+}
+
+impl NFe {
+
+    // TODO: Implement digital signature generation and verification and complete test
+    pub fn new(info: Info) -> Self {
+        let id = info.id();
+        Self {
+            info,
+            signature: Signature {
+                info: SignatureInfo {
+                    canonicalization_method: CanonicalizationMethod,
+                    signature_method: SignatureMethod,
+                    reference: SignatureReference {
+                        uri: format!("#{}", id),
+                        transforms: SignatureTransforms,
+                        digest_method: DigestMethod,
+                        digest_value: "".to_string(),
+                    },
+                },
+                key_info: KeyInfo {
+                    data: X509Data {
+                        certificate: "".to_string()
+                    }
+                },
+                value: Vec::new(),
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct Signature {
+    pub info: SignatureInfo,
+    pub value: Vec<u8>,
+    pub key_info: KeyInfo,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct SignatureInfo {
+    pub canonicalization_method: CanonicalizationMethod,
+    pub signature_method: SignatureMethod,
+    pub reference: SignatureReference,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct SignatureReference {
+    #[serde(rename = "@URI")]
+    pub uri: String,
+    #[serde(rename = "Transforms")]
+    pub transforms: SignatureTransforms,
+    #[serde(rename = "DigestMethod")]
+    pub digest_method: DigestMethod,
+    #[serde(rename = "DigestValue")]
+    pub digest_value: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SignatureTransforms;
+
+impl SignatureTransforms {
+    fn transforms() -> Vec<SignatureTransform> {
+        vec![
+            SignatureTransform::SignatureEnvelopedTransform(SignatureEnvelopedTransform),
+            SignatureTransform::SignatureCanonicalizedTransform(SignatureCanonicalizedTransform),
+        ]
+    }
+}
+
+impl Serialize for SignatureTransforms {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let transforms = Self::transforms();
+        let mut seq = serializer.serialize_seq(Some(transforms.len()))?;
+        for transform in transforms {
+            seq.serialize_element(&transform)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for SignatureTransforms {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            #[serde(rename = "Transform")]
+            transforms: Vec<SignatureTransform>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        let expected_transforms = Self::transforms();
+
+        if helper.transforms != expected_transforms {
+            return Err(serde::de::Error::custom("Transforms do not match expected values"));
+        }
+
+        Ok(SignatureTransforms)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum SignatureTransform {
+    SignatureEnvelopedTransform(SignatureEnvelopedTransform),
+    SignatureCanonicalizedTransform(SignatureCanonicalizedTransform),
+}
+
+#[derive(MethodAlgorithm, Debug, PartialEq)]
+#[method_algorithm("http://www.w3.org/2000/09/xmldsig#enveloped-signature")]
+pub struct SignatureEnvelopedTransform;
+
+#[derive(MethodAlgorithm, Debug, PartialEq)]
+#[method_algorithm("http://www.w3.org/TR/2001/REC-xml-c14n-20010315")]
+pub struct SignatureCanonicalizedTransform;
+
+#[derive(MethodAlgorithm, Debug, PartialEq)]
+#[method_algorithm("http://www.w3.org/2000/09/xmldsig#sha1")]
+pub struct DigestMethod;
+
+#[derive(MethodAlgorithm, Debug, PartialEq)]
+#[method_algorithm("http://www.w3.org/TR/2001/REC-xml-c14n-20010315")]
+pub struct CanonicalizationMethod;
+
+#[derive(MethodAlgorithm, Debug, PartialEq)]
+#[method_algorithm("http://www.w3.org/2000/09/xmldsig#rsa-sha1")]
+pub struct SignatureMethod;
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct KeyInfo {
+    #[serde(rename = "X509Data")]
+    pub data: X509Data,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct X509Data {
+    #[serde(rename = "X509Certificate")]
+    pub certificate: String,
 }
 
 /// Main structure based on the XML structure of the NFe
@@ -1208,6 +1357,11 @@ mod tests {
                 PersonDocument::CPF(CPF("12345678901".to_string())),
             ],
         }
+    }
+
+    #[serialization_test(fixture = "../tests/fixtures/nfe.xml")]
+    fn setup_nfe() -> NFe {
+        NFe::new(setup_info())
     }
 
     #[serialization_test(fixture = "../tests/fixtures/total.xml")]

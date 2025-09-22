@@ -5,11 +5,7 @@
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    parse::{Parse, ParseStream}, parse_macro_input, ItemFn,
-    LitStr,
-    Token,
-};
+use syn::{parse::{Parse, ParseStream}, parse_macro_input, DeriveInput, ItemFn, LitStr, Token};
 
 /// Represents the possible arguments for the `#[serialization_test]` macro.
 ///
@@ -151,4 +147,63 @@ pub fn serialization_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(MethodAlgorithm, attributes(method_algorithm))]
+pub fn method_algorithm_derive(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+    let name_str = name.to_string();
+    let algorithm_value = input
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("method_algorithm"))
+        .and_then(|attr| attr.parse_args::<LitStr>().ok())
+        .map(|lit_str| lit_str.value())
+        .unwrap_or_else(|| {
+            panic!("Expected a `method_algorithm` attribute with a string value, e.g., #[method_algorithm(\"value\")]");
+        });
+
+    let generated = quote! {
+        impl #name {
+            pub fn algorithm() -> &'static str {
+                #algorithm_value
+            }
+        }
+
+        impl Serialize for #name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                let mut state = serializer.serialize_struct(#name_str, 1)?;
+                state.serialize_field("@Algorithm", Self::algorithm())?;
+                state.end()
+            }
+        }
+
+        impl<'de> Deserialize<'de> for #name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                #[derive(Deserialize)]
+                struct Helper {
+                    #[serde(rename = "@Algorithm")]
+                    algorithm: String,
+                }
+
+                let helper = Helper::deserialize(deserializer)?;
+                if helper.algorithm != Self::algorithm() {
+                    return Err(serde::de::Error::custom(format!(
+                        "Unsupported algorithm: {}",
+                        helper.algorithm
+                    )));
+                }
+                Ok(#name)
+            }
+        }
+    };
+
+    generated.into()
 }
