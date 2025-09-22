@@ -248,7 +248,7 @@ impl Info {
     fn verifier_digit(&self, id: &str) -> u8 {
         let mut weight = 4;
         let remainder = id.chars().fold(0, |acc, d| {
-            let d = d.to_digit(10).expect("failed to parse digit");
+            let d = d.to_digit(10).unwrap_or_else(|| panic!("verifier_digit: failed to parse digit '{}'", d));
             let result = d * weight;
             weight = if weight <= 2 { 9 } else { weight - 1 };
             acc + result
