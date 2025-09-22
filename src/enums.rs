@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use crate::models::ICMSSN102;
 use crate::utils::left_pad;
 use serde::ser::SerializeStruct;
@@ -311,16 +312,27 @@ impl<'de> Deserialize<'de> for ICMS {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[repr(u8)]
-#[serde(from = "u8", into = "u8")]
+#[serde(try_from = "u8", into = "u8")]
 pub enum CSOSN {
     FinalConsumer = 102,
 }
 
-impl From<u8> for CSOSN {
-    fn from(value: u8) -> Self {
+#[derive(PartialEq, Debug, Clone)]
+pub struct InvalidCSOSN(u8);
+
+impl Display for InvalidCSOSN {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid CSOSN value: {}", self.0)
+    }
+}
+
+impl TryFrom<u8> for CSOSN {
+    type Error = InvalidCSOSN;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            102 => CSOSN::FinalConsumer,
-            _ => panic!("Invalid CSOSN value: {}", value),
+            102 => Ok(CSOSN::FinalConsumer),
+            _ => Err(InvalidCSOSN(value)),
         }
     }
 }
