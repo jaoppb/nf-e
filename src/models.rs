@@ -75,7 +75,7 @@ impl<'de> Deserialize<'de> for Transport {
 ///
 /// The fields are public but use the `InfoBuilder` to create the structure.
 ///
-/// id: Identifier of the NFe (id) - Format "NFe{chave}"
+/// Id: Identifier of the NFe (Id) - Format "NFe{chave}"
 /// identification: Identification structure (ide)
 /// issuer: Issuer structure (emit)
 /// details: Details structure (det)
@@ -137,7 +137,7 @@ impl Info {
     /// - Type of emission (tpEmis) - 1 digit
     /// - Numeric code (cNF) - 8 digits (left-padded with zeros)
     /// - Verifier digit (cDV) - 1 digit (calculated using a modulus 11 algorithm)
-    /// Returns the complete key in the format "NFe{chave}"
+    ///   Returns the complete key in the format "NFe{chave}"
     pub fn id(&self) -> String {
         let id = self.bare_id();
         format!("NFe{}{}", id, self.verifier_digit(&id))
@@ -161,7 +161,7 @@ impl Serialize for Info {
 
         let mut state = serializer.serialize_struct("infNFe", len)?;
         state.serialize_field("@versao", &self.version())?;
-        state.serialize_field("@id", &self.id())?;
+        state.serialize_field("@Id", &self.id())?;
         state.serialize_field("ide", &self.identification)?;
         state.serialize_field("emit", &self.issuer)?;
         if self.authorized.is_some() {
@@ -195,7 +195,7 @@ impl<'de> Deserialize<'de> for Info {
         struct InfoHelper {
             #[serde(rename = "@versao")]
             versao: String,
-            #[serde(rename = "@id")]
+            #[serde(rename = "@Id")]
             id: String,
             #[serde(rename = "ide")]
             identification: Identification,
