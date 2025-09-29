@@ -1,12 +1,13 @@
 use crate::enums::*;
 
 use crate::LIBRARY_VERSION;
+use crate::config::ConfigError;
 use crate::states::{City, Location, State};
 use crate::utils::left_pad;
 use chrono::Datelike;
 use nf_e_macros::MethodAlgorithm;
-use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 use serde::ser::SerializeSeq;
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 #[derive(Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct F64(pub f64);
@@ -80,7 +81,6 @@ pub struct NFe {
 }
 
 impl NFe {
-
     // TODO: Implement digital signature generation and verification and complete test
     pub fn new(info: Info) -> Self {
         let id = info.id();
@@ -99,11 +99,11 @@ impl NFe {
                 },
                 key_info: KeyInfo {
                     data: X509Data {
-                        certificate: "".to_string()
-                    }
+                        certificate: "".to_string(),
+                    },
                 },
                 value: Vec::new(),
-            }
+            },
         }
     }
 }
@@ -175,7 +175,9 @@ impl<'de> Deserialize<'de> for SignatureTransforms {
         let expected_transforms = Self::transforms();
 
         if helper.transforms != expected_transforms {
-            return Err(serde::de::Error::custom("Transforms do not match expected values"));
+            return Err(serde::de::Error::custom(
+                "Transforms do not match expected values",
+            ));
         }
 
         Ok(SignatureTransforms)
@@ -248,7 +250,9 @@ impl Info {
     fn verifier_digit(&self, id: &str) -> u8 {
         let mut weight = 4;
         let remainder = id.chars().fold(0, |acc, d| {
-            let d = d.to_digit(10).unwrap_or_else(|| panic!("verifier_digit: failed to parse digit '{}'", d));
+            let d = d
+                .to_digit(10)
+                .unwrap_or_else(|| panic!("verifier_digit: failed to parse digit '{}'", d));
             let result = d * weight;
             weight = if weight <= 2 { 9 } else { weight - 1 };
             acc + result
@@ -400,6 +404,7 @@ pub struct DoNotMatchTotal {
 #[derive(Debug, Clone, PartialEq)]
 pub enum InfoBuilderError {
     PaymentsDoNotMatchTotal(DoNotMatchTotal),
+    ConfigError(ConfigError),
 }
 
 pub struct InfoBuilder {
@@ -412,15 +417,16 @@ pub struct InfoBuilder {
 }
 
 impl InfoBuilder {
-    fn new(identification: Identification, issuer: Issuer, payments: Payments) -> Self {
-        Self {
+    fn new(identification: Identification, payments: Payments) -> Result<Self, InfoBuilderError> {
+        let issuer = crate::config::get_issuer().map_err(InfoBuilderError::ConfigError)?;
+        Ok(Self {
             identification,
             issuer,
             payments,
             details: Vec::new(),
             authorized: None,
             transport: None,
-        }
+        })
     }
 
     pub fn add_detail(mut self, detail: Detail) -> Self {
@@ -812,7 +818,7 @@ impl<'de> Deserialize<'de> for Identification {
 /// telephone: Telephone number (fone) - Only numbers
 /// country_name: Country name (xPais) - Fixed value "Brasil"
 /// country_code: Country code (cPais) - Fixed value 1058
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Address {
     pub line_1: String,
     pub line_2: Option<String>,
@@ -900,7 +906,7 @@ impl<'de> Deserialize<'de> for Address {
 ///
 /// address: Address of the taxable entity
 /// ie: State registration (IE) - Use "ISENTO" if exempt
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TaxableAddress {
     pub address: Address,
     pub ie: IE,
@@ -989,7 +995,7 @@ impl<'de> Deserialize<'de> for TaxableAddress {
 /// name: Legal name of the issuer (xNome)
 /// trade_name: Trade name of the issuer (xFant) - Optional
 /// address: Taxable address of the issuer (enderEmit)
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename = "emit")]
 pub struct Issuer {
     #[serde(rename = "$value")]
@@ -1199,6 +1205,7 @@ pub struct Detail {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Config, PKCS12Config, set_config};
     use crate::utils::canonicalize_xml as canonicalize;
     use chrono::TimeZone;
     use nf_e_macros::serialization_test;
@@ -1262,8 +1269,26 @@ mod tests {
         }
     }
 
+    fn setup_config() {
+        if crate::config::is_set() {
+            return;
+        }
+
+        set_config(Config::new(
+            setup_issuer(),
+            PKCS12Config::new(
+                "tests/certificates/cert.pfx".to_string(),
+                "12345678".to_string(),
+            ),
+        ))
+        .expect("Failed to set config");
+    }
+
     fn setup_info_builder() -> InfoBuilder {
-        InfoBuilder::new(setup_identification(), setup_issuer(), setup_payments())
+        setup_config();
+
+        InfoBuilder::new(setup_identification(), setup_payments())
+            .unwrap()
             .add_detail(setup_detail())
             .add_detail(setup_detail())
     }
