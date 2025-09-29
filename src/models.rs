@@ -999,7 +999,7 @@ impl<'de> Deserialize<'de> for TaxableAddress {
 #[serde(rename = "emit")]
 pub struct Issuer {
     #[serde(rename = "$value")]
-    pub document: Document,
+    pub document: PersonDocument,
     #[serde(rename = "xNome")]
     pub name: String,
     #[serde(rename = "xFant")]
@@ -1203,7 +1203,7 @@ pub struct Detail {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::config::{Config, PKCS12Config, set_config};
     use crate::utils::canonicalize_xml as canonicalize;
@@ -1362,9 +1362,9 @@ mod tests {
     }
 
     #[serialization_test(fixture = "../tests/fixtures/issuer.xml")]
-    fn setup_issuer() -> Issuer {
+    pub fn setup_issuer() -> Issuer {
         Issuer {
-            document: Document::CNPJ(CNPJ("12345678000195".to_string())),
+            document: PersonDocument::CNPJ(CNPJ("12345678000195".to_string())),
             name: "Empresa Exemplo LTDA".to_string(),
             trade_name: Some("Empresa Exemplo".to_string()),
             address: TaxableAddress {

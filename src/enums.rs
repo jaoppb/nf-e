@@ -261,6 +261,15 @@ pub enum PersonDocument {
     CPF(CPF),
 }
 
+impl PersonDocument {
+    pub fn as_str(&self) -> &str {
+        match self {
+            PersonDocument::CNPJ(cnpj) => &cnpj.0,
+            PersonDocument::CPF(cpf) => &cpf.0,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct CNPJ(pub String);
 
