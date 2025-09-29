@@ -57,7 +57,6 @@ pub fn get_issuer() -> Result<Issuer, ConfigError> {
 pub fn is_set() -> bool {
     let config_lock = CONFIG
         .read()
-        .map_err(|_| ConfigError::Locked)
         .expect("CONFIG lock is poisoned");
     config_lock.is_some()
 }
