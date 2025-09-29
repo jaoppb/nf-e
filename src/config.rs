@@ -65,3 +65,24 @@ pub fn is_set() -> bool {
 pub fn get_pkcs12_certificate() -> Result<(), ConfigError> {
     todo!("Implement PKCS#12 certificate loading logic here");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::tests::setup_issuer;
+
+    #[test]
+    fn test_set_and_get_config() {
+        let issuer = setup_issuer();
+        let pkcs12_config =
+            PKCS12Config::new("path/to/cert.p12".to_string(), "password".to_string());
+        let config = Config::new(issuer.clone(), pkcs12_config);
+
+        assert!(!is_set());
+        set_config(config).unwrap();
+        assert!(is_set());
+
+        let retrieved_issuer = get_issuer().unwrap();
+        assert_eq!(retrieved_issuer, issuer);
+    }
+}
