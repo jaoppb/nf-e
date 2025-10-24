@@ -1,23 +1,18 @@
-use std::fmt::Display;
 use crate::models::ICMSSN102;
 use crate::utils::left_pad;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
+use std::fmt::Display;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Default)]
 pub enum TransportType {
     CIF = 0,
     FOB = 1,
     ThirdParty = 2,
     Issuer = 3,
     Recipient = 4,
+    #[default]
     None = 9,
-}
-
-impl Default for TransportType {
-    fn default() -> Self {
-        TransportType::None
-    }
 }
 
 impl TryFrom<u8> for TransportType {
