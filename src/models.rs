@@ -1,13 +1,23 @@
+use crate::config::certificate;
 use crate::enums::*;
 
 use crate::LIBRARY_VERSION;
 use crate::config::ConfigError;
 use crate::states::{City, Location, State};
+use crate::utils::canonicalize_xml;
+use crate::utils::hash_sha1;
 use crate::utils::left_pad;
+use crate::utils::sign_sha1;
+use crate::utils::verify_sha1;
 use chrono::Datelike;
 use nf_e_macros::MethodAlgorithm;
-use serde::ser::SerializeSeq;
-use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
+use rsa::BigUint;
+use rsa::RsaPublicKey;
+
+use rsa::pkcs8::DecodePublicKey;
+use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStruct};
+use thiserror::Error;
+use x509_certificate::X509Certificate;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, PartialOrd)]
 pub struct F64(pub f64);
@@ -74,52 +84,270 @@ impl<'de> Deserialize<'de> for Transport {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct NFe {
     pub info: Info,
-    pub signature: Signature,
 }
 
-impl NFe {
-    // TODO: Implement digital signature generation and verification and complete test
-    pub fn new(info: Info) -> Self {
-        let id = info.id();
-        Self {
-            info,
-            signature: Signature {
-                info: SignatureInfo {
-                    canonicalization_method: CanonicalizationMethod,
-                    signature_method: SignatureMethod,
-                    reference: SignatureReference {
-                        uri: format!("#{}", id),
-                        transforms: SignatureTransforms,
-                        digest_method: DigestMethod,
-                        digest_value: "".to_string(),
-                    },
+impl Serialize for NFe {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let signature = Signature::sign_info(&self.info).map_err(serde::ser::Error::custom)?;
+
+        let mut state = serializer.serialize_struct("NFe", 3)?;
+        state.serialize_field("@xmlns", "http://www.portalfiscal.inf.br/nfe")?;
+        state.serialize_field("infNFe", &self.info)?;
+        state.serialize_field("Signature", &signature)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for NFe {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct NFeHelper {
+            #[serde(rename = "@xmlns")]
+            xmlns: String,
+            #[serde(rename = "infNFe")]
+            info: Info,
+            #[serde(rename = "Signature")]
+            signature: Signature,
+        }
+
+        let helper = NFeHelper::deserialize(deserializer)?;
+        if helper.xmlns != "http://www.portalfiscal.inf.br/nfe" {
+            return Err(serde::de::Error::custom(format!(
+                "Unsupported xmlns: {}",
+                helper.xmlns
+            )));
+        }
+
+        helper
+            .signature
+            .verify()
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(NFe { info: helper.info })
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum PublicKeyParsingError {
+    #[error("X509 certificate error: {0}")]
+    X509CertificateError(#[from] x509_certificate::X509CertificateError),
+    #[error("RsaPublicKey creating error: {0}")]
+    RsaError(#[from] rsa::errors::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum SigningError {
+    #[error("Configuration error: {0}")]
+    ConfigError(#[from] ConfigError),
+    #[error("Canonicalization error")]
+    CanonicalizationError,
+    #[error("RSA signature error: {0}")]
+    RsaSigningError(#[from] rsa::Error),
+    #[error("RSA signature verification error: {0}")]
+    RsaSigningVerifyError(#[from] rsa::signature::Error),
+    #[error("RSA public key error: {0}")]
+    RsaPublicKeyError(#[from] rsa::pkcs8::spki::Error),
+    #[error("RSA public key parsing error: {0}")]
+    PublicKeyParsingError(#[from] PublicKeyParsingError),
+    #[error("Serialization error: {0}")]
+    SerializeError(#[from] quick_xml::se::SeError),
+    #[error("Base64 decoding error: {0}")]
+    Base64DecodeError(#[from] base64::DecodeError),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Signature {
+    pub info: SignatureInfo,
+    pub value: String,
+    pub key_info: KeyInfo,
+}
+
+impl Signature {
+    fn xlmns() -> &'static str {
+        "http://www.w3.org/2000/09/xmldsig#"
+    }
+
+    fn sign_info(info: &Info) -> Result<Self, SigningError> {
+        use base64::prelude::*;
+
+        let certificate = certificate().map_err(SigningError::ConfigError)?;
+
+        let info_xml = quick_xml::se::to_string(&NameSpacedInfo::new(info))
+            .map_err(SigningError::SerializeError)?;
+        let info_xml =
+            canonicalize_xml(&info_xml).map_err(|_| SigningError::CanonicalizationError)?;
+
+        let digest_value = hash_sha1(&info_xml);
+        let signed_info = SignatureInfo::new(
+            format!("#{}", info.id()),
+            BASE64_STANDARD.encode(digest_value),
+        );
+
+        let signed_info_xml = quick_xml::se::to_string(&NameSpacedSignatureInfo::new(&signed_info))
+            .map_err(SigningError::SerializeError)?;
+        let signed_info_xml =
+            canonicalize_xml(&signed_info_xml).map_err(|_| SigningError::CanonicalizationError)?;
+
+        let signed = sign_sha1(&signed_info_xml, &certificate.private_key)
+            .map_err(SigningError::RsaSigningError)?;
+
+        Ok(Self {
+            info: signed_info,
+            value: BASE64_STANDARD.encode(signed),
+            key_info: KeyInfo {
+                data: X509Data {
+                    certificate: BASE64_STANDARD.encode(certificate.public_key.as_der()),
                 },
-                key_info: KeyInfo {
-                    data: X509Data {
-                        certificate: "".to_string(),
-                    },
-                },
-                value: Vec::new(),
+            },
+        })
+    }
+
+    fn parse_unsigned(value: &bcder::Unsigned) -> BigUint {
+        BigUint::from_bytes_be(value.as_slice())
+    }
+
+    fn parse_public_key(public_key_der: &[u8]) -> Result<RsaPublicKey, PublicKeyParsingError> {
+        let public_key = X509Certificate::from_der(public_key_der)
+            .map_err(PublicKeyParsingError::X509CertificateError)?;
+        let public_key_data = public_key
+            .rsa_public_key_data()
+            .map_err(PublicKeyParsingError::X509CertificateError)?;
+        RsaPublicKey::new(
+            BigUint::from_bytes_be(public_key_data.modulus.as_slice()),
+            BigUint::from_bytes_be(public_key_data.public_exponent.as_slice()),
+        )
+        .map_err(PublicKeyParsingError::RsaError)
+    }
+
+    fn verify(&self) -> Result<(), SigningError> {
+        use base64::prelude::*;
+
+        let public_key_der = &BASE64_STANDARD
+            .decode(&self.key_info.data.certificate)
+            .map_err(SigningError::Base64DecodeError)?;
+        let public_key =
+            Self::parse_public_key(public_key_der).map_err(SigningError::PublicKeyParsingError)?;
+
+        let signature_bytes: &[u8] = &BASE64_STANDARD
+            .decode(&self.value)
+            .map_err(SigningError::Base64DecodeError)?;
+
+        let signed_info_xml = quick_xml::se::to_string(&NameSpacedSignatureInfo::new(&self.info))
+            .map_err(SigningError::SerializeError)?;
+        let signed_info_xml =
+            canonicalize_xml(&signed_info_xml).map_err(|_| SigningError::CanonicalizationError)?;
+
+        verify_sha1(&signed_info_xml, signature_bytes, &public_key)?;
+
+        Ok(())
+    }
+}
+
+impl Serialize for Signature {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("Signature", 3)?;
+        state.serialize_field("@xmlns", Self::xlmns())?;
+        state.serialize_field("SignedInfo", &self.info)?;
+        state.serialize_field("SignatureValue", &self.value)?;
+        state.serialize_field("KeyInfo", &self.key_info)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct SignatureHelper {
+            #[serde(rename = "@xmlns")]
+            xmlns: String,
+            #[serde(rename = "SignedInfo")]
+            info: SignatureInfo,
+            #[serde(rename = "SignatureValue")]
+            value: String,
+            #[serde(rename = "KeyInfo")]
+            key_info: KeyInfo,
+        }
+
+        let helper = SignatureHelper::deserialize(deserializer)?;
+        if helper.xmlns != Self::xlmns() {
+            return Err(serde::de::Error::custom(format!(
+                "Unsupported xmlns: {}",
+                helper.xmlns
+            )));
+        }
+
+        Ok(Signature {
+            info: helper.info,
+            value: helper.value,
+            key_info: helper.key_info,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct SignatureInfo {
+    pub canonicalization_method: CanonicalizationMethod,
+    pub signature_method: SignatureMethod,
+    pub reference: SignatureReference,
+}
+
+impl SignatureInfo {
+    fn new(uri: String, digest_value: String) -> Self {
+        SignatureInfo {
+            canonicalization_method: CanonicalizationMethod,
+            signature_method: SignatureMethod,
+            reference: SignatureReference {
+                uri,
+                transforms: SignatureTransforms,
+                digest_method: DigestMethod,
+                digest_value,
             },
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct Signature {
-    pub info: SignatureInfo,
-    pub value: Vec<u8>,
-    pub key_info: KeyInfo,
+struct NameSpacedSignatureInfo<'a> {
+    xmlns: &'static str,
+    info: &'a SignatureInfo,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct SignatureInfo {
-    pub canonicalization_method: CanonicalizationMethod,
-    pub signature_method: SignatureMethod,
-    pub reference: SignatureReference,
+impl<'a> NameSpacedSignatureInfo<'a> {
+    fn new(info: &'a SignatureInfo) -> Self {
+        NameSpacedSignatureInfo {
+            xmlns: Signature::xlmns(),
+            info,
+        }
+    }
+}
+
+impl<'a> Serialize for NameSpacedSignatureInfo<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("SignedInfo", 4)?;
+        state.serialize_field("@xmlns", self.xmlns)?;
+        state.serialize_field("CanonicalizationMethod", &self.info.canonicalization_method)?;
+        state.serialize_field("SignatureMethod", &self.info.signature_method)?;
+        state.serialize_field("Reference", &self.info.reference)?;
+        state.end()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -140,8 +368,8 @@ pub struct SignatureTransforms;
 impl SignatureTransforms {
     fn transforms() -> Vec<SignatureTransform> {
         vec![
-            SignatureTransform::SignatureEnvelopedTransform(SignatureEnvelopedTransform),
             SignatureTransform::SignatureCanonicalizedTransform(SignatureCanonicalizedTransform),
+            SignatureTransform::SignatureEnvelopedTransform(SignatureEnvelopedTransform),
         ]
     }
 }
@@ -151,12 +379,17 @@ impl Serialize for SignatureTransforms {
     where
         S: serde::Serializer,
     {
-        let transforms = Self::transforms();
-        let mut seq = serializer.serialize_seq(Some(transforms.len()))?;
-        for transform in transforms {
-            seq.serialize_element(&transform)?;
+        #[derive(Serialize)]
+        struct Helper {
+            transforms: Vec<SignatureTransform>,
         }
-        seq.end()
+
+        let wrapper = Helper {
+            transforms: Self::transforms(),
+        };
+        let mut state = serializer.serialize_struct("Transforms", 1)?;
+        state.serialize_field("Transform", &wrapper.transforms)?;
+        state.end()
     }
 }
 
@@ -166,6 +399,7 @@ impl<'de> Deserialize<'de> for SignatureTransforms {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(rename = "Transforms")]
         struct Helper {
             #[serde(rename = "Transform")]
             transforms: Vec<SignatureTransform>,
@@ -185,6 +419,7 @@ impl<'de> Deserialize<'de> for SignatureTransforms {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(untagged)]
 pub enum SignatureTransform {
     SignatureEnvelopedTransform(SignatureEnvelopedTransform),
     SignatureCanonicalizedTransform(SignatureCanonicalizedTransform),
@@ -243,6 +478,10 @@ pub struct Info {
 }
 
 impl Info {
+    pub fn xmlns() -> &'static str {
+        "http://www.portalfiscal.inf.br/nfe"
+    }
+
     pub fn version(&self) -> String {
         "4.00".to_string()
     }
@@ -295,6 +534,17 @@ impl Info {
         let id = self.bare_id();
         format!("NFe{}{}", id, self.verifier_digit(&id))
     }
+
+    fn parse_details(&self) -> Vec<IndexedDetail<'_>> {
+        self.details
+            .iter()
+            .enumerate()
+            .map(|(index, detail)| IndexedDetail {
+                detail,
+                index: index + 1,
+            })
+            .collect::<Vec<_>>()
+    }
 }
 
 impl Serialize for Info {
@@ -302,14 +552,6 @@ impl Serialize for Info {
     where
         S: serde::Serializer,
     {
-        #[derive(Serialize)]
-        struct IndexedDetail<'a> {
-            #[serde(flatten)]
-            detail: &'a Detail,
-            #[serde(rename = "@nItem")]
-            index: usize,
-        }
-
         let len = 6 + self.authorized.is_some() as usize;
 
         let mut state = serializer.serialize_struct("infNFe", len)?;
@@ -323,18 +565,7 @@ impl Serialize for Info {
         state.serialize_field("total", &self.total)?;
         state.serialize_field("pag", &self.payments)?;
         state.serialize_field("transp", &self.transport)?;
-        state.serialize_field(
-            "det",
-            &self
-                .details
-                .iter()
-                .enumerate()
-                .map(|(index, detail)| IndexedDetail {
-                    detail,
-                    index: index + 1,
-                })
-                .collect::<Vec<_>>(),
-        )?;
+        state.serialize_field("det", &self.parse_details())?;
         state.end()
     }
 }
@@ -395,16 +626,50 @@ impl<'de> Deserialize<'de> for Info {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DoNotMatchTotal {
-    expected: f64,
-    total: f64,
+struct NameSpacedInfo<'a> {
+    xmlns: &'static str,
+    info: &'a Info,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl<'a> NameSpacedInfo<'a> {
+    fn new(info: &'a Info) -> Self {
+        NameSpacedInfo {
+            xmlns: Info::xmlns(),
+            info,
+        }
+    }
+}
+
+impl Serialize for NameSpacedInfo<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let len = 7 + self.info.authorized.is_some() as usize;
+
+        let mut state = serializer.serialize_struct("infNFe", len)?;
+        state.serialize_field("@xmlns", &self.xmlns)?;
+        state.serialize_field("@versao", &self.info.version())?;
+        state.serialize_field("@Id", &self.info.id())?;
+        state.serialize_field("ide", &self.info.identification)?;
+        state.serialize_field("emit", &self.info.issuer)?;
+        if self.info.authorized.is_some() {
+            state.serialize_field("autXML", &self.info.authorized)?;
+        }
+        state.serialize_field("total", &self.info.total)?;
+        state.serialize_field("pag", &self.info.payments)?;
+        state.serialize_field("transp", &self.info.transport)?;
+        state.serialize_field("det", &self.info.parse_details())?;
+        state.end()
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum InfoBuilderError {
-    PaymentsDoNotMatchTotal(DoNotMatchTotal),
-    ConfigError(ConfigError),
+    #[error("Payments do not match total: expected {expected}, found {total}")]
+    PaymentsDoNotMatchTotal { expected: f64, total: f64 },
+    #[error("Configuration error: {0}")]
+    ConfigError(#[from] ConfigError),
 }
 
 pub struct InfoBuilder {
@@ -454,10 +719,10 @@ impl InfoBuilder {
         if (paid - expected).abs() < f64::EPSILON {
             Ok(())
         } else {
-            Err(InfoBuilderError::PaymentsDoNotMatchTotal(DoNotMatchTotal {
+            Err(InfoBuilderError::PaymentsDoNotMatchTotal {
                 expected: *expected,
                 total: paid,
-            }))
+            })
         }
     }
 
@@ -1202,10 +1467,18 @@ pub struct Detail {
     pub tax: Tax,
 }
 
+#[derive(Serialize)]
+struct IndexedDetail<'a> {
+    #[serde(flatten)]
+    detail: &'a Detail,
+    #[serde(rename = "@nItem")]
+    index: usize,
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::config::{Config, PKCS12Config, set_config};
+    use crate::config::{set_config, tests::setup_test_config};
     use crate::utils::canonicalize_xml as canonicalize;
     use chrono::TimeZone;
     use nf_e_macros::serialization_test;
@@ -1274,14 +1547,7 @@ pub mod tests {
             return;
         }
 
-        set_config(Config::new(
-            setup_issuer(),
-            PKCS12Config::new(
-                "tests/certificates/cert.pfx".to_string(),
-                "12345678".to_string(),
-            ),
-        ))
-        .expect("Failed to set config");
+        set_config(setup_test_config()).expect("Failed to set config");
     }
 
     fn setup_info_builder() -> InfoBuilder {
@@ -1301,15 +1567,9 @@ pub mod tests {
             .expect("Failed to build Info")
     }
 
-    #[test]
-    fn serialize_info_without_authorized() {
-        let info = setup_info_builder().build().expect("Failed to build Info");
-        let serialized = quick_xml::se::to_string(&info).expect("Failed to serialize info");
-        let canonicalized = canonicalize(&serialized).expect("Failed to canonicalize XML");
-        assert_eq!(
-            canonicalized,
-            canonicalize(include_str!("../tests/fixtures/info.xml")).unwrap()
-        );
+    #[serialization_test(fixture = "../tests/fixtures/info.xml")]
+    fn setup_info_without_authorized() -> Info {
+        setup_info_builder().build().expect("Failed to build Info")
     }
 
     #[serialization_test(fixture = "../tests/fixtures/identification.xml")]
@@ -1386,7 +1646,9 @@ pub mod tests {
 
     #[serialization_test(fixture = "../tests/fixtures/nfe.xml")]
     fn setup_nfe() -> NFe {
-        NFe::new(setup_info())
+        NFe {
+            info: setup_info_without_authorized(),
+        }
     }
 
     #[serialization_test(fixture = "../tests/fixtures/total.xml")]

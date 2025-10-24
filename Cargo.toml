@@ -13,6 +13,15 @@ members = [".", "nf-e-macros"]
 chrono = { version = "0.4.41", features = ["serde"] }
 quick-xml = { version = "0.38.1", features = ["serialize"] }
 serde = { version = "1.0.219", features = ["derive"] }
-xml-canonicalization = "0.1.0"
 nf-e-macros = { path = "./nf-e-macros" }
 lazy_static = "1.5.0"
+rsa = { version = "0.9.8", features = ["sha1"] }
+p12-keystore = "0.2.0"
+base64 = "0.22.1"
+sha1 = "0.10.6"
+thiserror = "2.0.17"
+x509-certificate = "0.25.0"
+bcder = "0.7.6"
+
+[dev-dependencies]
+rusty-fork = "0.3.1"
