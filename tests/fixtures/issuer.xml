@@ -14,6 +14,7 @@
         <fone>3132123456</fone>
         <xPais>Brasil</xPais>
         <cPais>1058</cPais>
-        <IE>123456789</IE>
     </enderEmit>
+    <IE>123456789</IE>
+    <CRT>1</CRT>
 </emit>

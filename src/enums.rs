@@ -233,6 +233,36 @@ impl TryFrom<u8> for Intermediator {
     }
 }
 
+/// Código de Regime Tributário (CRT)
+///
+/// This field is required in the issuer (emit) section
+/// and indicates the tax regime of the issuer:
+/// - 1: Simples Nacional
+/// - 2: Simples Nacional - excesso de sublimite de receita bruta
+/// - 3: Regime Normal
+/// - 4: Simples Nacional - Microempreendedor Individual (MEI)
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum CRT {
+    SimplesNacional = 1,
+    SimplesNacionalExcesso = 2,
+    RegimeNormal = 3,
+    MEI = 4,
+}
+
+impl TryFrom<u8> for CRT {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(CRT::SimplesNacional),
+            2 => Ok(CRT::SimplesNacionalExcesso),
+            3 => Ok(CRT::RegimeNormal),
+            4 => Ok(CRT::MEI),
+            _ => Err(format!("Invalid CRT value: {}", value)),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Document {
     CNPJ(CNPJ),
