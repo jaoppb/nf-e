@@ -241,7 +241,7 @@ impl TryFrom<u8> for Intermediator {
 /// - 2: Simples Nacional - excesso de sublimite de receita bruta
 /// - 3: Regime Normal
 /// - 4: Simples Nacional - Microempreendedor Individual (MEI)
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub enum CRT {
     SimplesNacional = 1,
     SimplesNacionalExcesso = 2,

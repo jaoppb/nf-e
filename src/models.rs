@@ -1286,7 +1286,7 @@ impl Serialize for Issuer {
         }
         state.serialize_field("enderEmit", &self.address)?;
         state.serialize_field("IE", &self.ie.0)?;
-        state.serialize_field("CRT", &(self.crt.clone() as u8))?;
+        state.serialize_field("CRT", &(self.crt as u8))?;
         state.end()
     }
 }
