@@ -3,9 +3,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStru
 /// SOAP Envelope namespace
 pub const SOAP_ENVELOPE_NS: &str = "http://www.w3.org/2003/05/soap-envelope";
 
-/// NFe namespace
-pub const NFE_NS: &str = "http://www.portalfiscal.inf.br/nfe/wsdl/NFeAutorizacao4";
-
 /// SOAP Envelope structure for NFe requests
 #[derive(Debug, PartialEq)]
 pub struct SoapEnvelope<T> {
@@ -32,12 +29,20 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for SoapEnvelope<T> {
         #[derive(Deserialize)]
         struct SoapEnvelopeHelper<T> {
             #[serde(rename = "@xmlns:soap")]
-            xmlns_soap: Option<String>,
+            xmlns_soap: String,
             #[serde(rename = "soap:Body", alias = "Body")]
             body: SoapBody<T>,
         }
 
         let helper = SoapEnvelopeHelper::deserialize(deserializer)?;
+
+        if helper.xmlns_soap != SOAP_ENVELOPE_NS {
+            return Err(serde::de::Error::custom(format!(
+                "Invalid SOAP namespace: expected '{}', found '{}'",
+                SOAP_ENVELOPE_NS, helper.xmlns_soap
+            )));
+        }
+
         Ok(SoapEnvelope { body: helper.body })
     }
 }
@@ -99,30 +104,27 @@ pub struct SoapFault {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::canonicalize_xml as canonicalize;
+    use nf_e_macros::serialization_test;
     use quick_xml::{de::from_str as deserialize, se::to_string as serialize};
 
-    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
     struct TestContent {
         #[serde(rename = "value")]
         value: String,
     }
 
-    #[test]
-    fn test_soap_envelope_serialization() {
-        let envelope = SoapEnvelope::new(TestContent {
+    #[serialization_test(fixture = "../../tests/fixtures/soap/envelope.xml")]
+    fn setup_soap_envelope() -> SoapEnvelope<TestContent> {
+        SoapEnvelope::new(TestContent {
             value: "test".to_string(),
-        });
-        let xml = serialize(&envelope).expect("Failed to serialize SOAP envelope");
-        assert!(xml.contains("soap:Envelope"));
-        assert!(xml.contains("soap:Body"));
-        assert!(xml.contains("<value>test</value>"));
+        })
     }
 
     #[test]
-    fn test_soap_envelope_deserialization() {
-        let xml = r#"<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><value>test</value></soap:Body></soap:Envelope>"#;
-        let envelope: SoapEnvelope<TestContent> =
-            deserialize(xml).expect("Failed to deserialize SOAP envelope");
-        assert_eq!(envelope.body.content.value, "test");
+    fn test_soap_envelope_invalid_namespace() {
+        let xml = r#"<soap:Envelope xmlns:soap="http://invalid.namespace"><soap:Body><value>test</value></soap:Body></soap:Envelope>"#;
+        let result: Result<SoapEnvelope<TestContent>, _> = deserialize(xml);
+        assert!(result.is_err());
     }
 }
