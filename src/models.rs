@@ -1167,17 +1167,15 @@ impl<'de> Deserialize<'de> for Address {
     }
 }
 
-/// Taxable entity identifier
+/// Issuer address structure (enderEmit)
 ///
-/// address: Address of the taxable entity
-/// ie: State registration (IE) - Use "ISENTO" if exempt
+/// address: Address of the issuer
 #[derive(Debug, PartialEq, Clone)]
-pub struct TaxableAddress {
+pub struct IssuerAddress {
     pub address: Address,
-    pub ie: IE,
 }
 
-impl Serialize for TaxableAddress {
+impl Serialize for IssuerAddress {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -1196,18 +1194,17 @@ impl Serialize for TaxableAddress {
         state.serialize_field("fone", &self.address.telephone)?;
         state.serialize_field("xPais", &"Brasil".to_string())?;
         state.serialize_field("cPais", &1058)?;
-        state.serialize_field("IE", &self.ie.0)?;
         state.end()
     }
 }
 
-impl<'de> Deserialize<'de> for TaxableAddress {
+impl<'de> Deserialize<'de> for IssuerAddress {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct TaxableAddressHelper {
+        struct IssuerAddressHelper {
             #[serde(rename = "xLgr")]
             x_lgr: String,
             #[serde(rename = "xCpl")]
@@ -1226,16 +1223,14 @@ impl<'de> Deserialize<'de> for TaxableAddress {
             cep: String,
             #[serde(rename = "fone")]
             fone: String,
-            #[serde(rename = "IE")]
-            ie: String,
         }
 
-        let helper = TaxableAddressHelper::deserialize(deserializer)?;
+        let helper = IssuerAddressHelper::deserialize(deserializer)?;
         let state = State::from_acronym(&helper.uf).ok_or_else(|| {
             serde::de::Error::custom(format!("Invalid state acronym: {}", helper.uf))
         })?;
 
-        Ok(TaxableAddress {
+        Ok(IssuerAddress {
             address: Address {
                 line_1: helper.x_lgr,
                 line_2: helper.x_cpl,
@@ -1249,28 +1244,99 @@ impl<'de> Deserialize<'de> for TaxableAddress {
                 zip_code: helper.cep,
                 telephone: helper.fone,
             },
-            ie: IE(helper.ie),
         })
     }
 }
 
 /// Issuer structure based on the XML structure of the NFe
 ///
-/// document: Document (CNPJ, CPF, or IE)
+/// document: Document (CNPJ or CPF)
 /// name: Legal name of the issuer (xNome)
 /// trade_name: Trade name of the issuer (xFant) - Optional
-/// address: Taxable address of the issuer (enderEmit)
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename = "emit")]
+/// address: Issuer address (enderEmit)
+/// ie: State registration (IE) - Use "ISENTO" if exempt
+/// crt: Código de Regime Tributário (CRT)
+#[derive(Debug, PartialEq, Clone)]
 pub struct Issuer {
-    #[serde(rename = "$value")]
     pub document: PersonDocument,
-    #[serde(rename = "xNome")]
     pub name: String,
-    #[serde(rename = "xFant")]
     pub trade_name: Option<String>,
-    #[serde(rename = "enderEmit")]
-    pub address: TaxableAddress,
+    pub address: IssuerAddress,
+    pub ie: IE,
+    pub crt: CRT,
+}
+
+impl Serialize for Issuer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let len = 5 + self.trade_name.is_some() as usize;
+        let mut state = serializer.serialize_struct("emit", len)?;
+
+        // Serialize document (CNPJ or CPF)
+        match &self.document {
+            PersonDocument::CNPJ(cnpj) => state.serialize_field("CNPJ", &cnpj.0)?,
+            PersonDocument::CPF(cpf) => state.serialize_field("CPF", &cpf.0)?,
+        }
+
+        state.serialize_field("xNome", &self.name)?;
+        if let Some(trade_name) = &self.trade_name {
+            state.serialize_field("xFant", trade_name)?;
+        }
+        state.serialize_field("enderEmit", &self.address)?;
+        state.serialize_field("IE", &self.ie.0)?;
+        state.serialize_field("CRT", &(self.crt as u8))?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Issuer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct IssuerHelper {
+            #[serde(rename = "CNPJ")]
+            cnpj: Option<String>,
+            #[serde(rename = "CPF")]
+            cpf: Option<String>,
+            #[serde(rename = "xNome")]
+            name: String,
+            #[serde(rename = "xFant")]
+            trade_name: Option<String>,
+            #[serde(rename = "enderEmit")]
+            address: IssuerAddress,
+            #[serde(rename = "IE")]
+            ie: String,
+            #[serde(rename = "CRT")]
+            crt: u8,
+        }
+
+        let helper = IssuerHelper::deserialize(deserializer)?;
+
+        let document = match (helper.cnpj, helper.cpf) {
+            (Some(cnpj), None) => PersonDocument::CNPJ(CNPJ(cnpj)),
+            (None, Some(cpf)) => PersonDocument::CPF(CPF(cpf)),
+            _ => {
+                return Err(serde::de::Error::custom(
+                    "Expected exactly one of CNPJ or CPF",
+                ))
+            }
+        };
+
+        let crt = CRT::try_from(helper.crt).map_err(serde::de::Error::custom)?;
+
+        Ok(Issuer {
+            document,
+            name: helper.name,
+            trade_name: helper.trade_name,
+            address: helper.address,
+            ie: IE(helper.ie),
+            crt,
+        })
+    }
 }
 
 /// Item structure based on the XML structure of the NFe
@@ -1627,10 +1693,11 @@ pub mod tests {
             document: PersonDocument::CNPJ(CNPJ("12345678000195".to_string())),
             name: "Empresa Exemplo LTDA".to_string(),
             trade_name: Some("Empresa Exemplo".to_string()),
-            address: TaxableAddress {
+            address: IssuerAddress {
                 address: setup_address(),
-                ie: IE("123456789".to_string()),
             },
+            ie: IE("123456789".to_string()),
+            crt: CRT::SimplesNacional,
         }
     }
 
